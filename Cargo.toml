@@ -1,0 +1,51 @@
+[package]
+name = "aqua-template-registry"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+description = "Publisher-DID scoped registry for Aqua templates: publishers register signed Aqua trees, consumers subscribe and resolve by publisher DID or qualified name."
+readme = "README.md"
+keywords = ["aqua", "aqua-protocol", "registry", "template", "did"]
+categories = ["development-tools", "web-programming::http-server"]
+repository = "https://github.com/inblockio/aqua-template-registry"
+exclude = ["target", "*.lock", ".vscode", ".idea"]
+
+[[bin]]
+name = "registryd"
+path = "src/bin/registryd.rs"
+required-features = ["server"]
+
+[features]
+default = ["server"]
+# HTTP surface: the axum router and the registryd binary.
+server = ["dep:axum", "dep:tokio", "dep:tower"]
+
+[dependencies]
+aqua-rs-sdk-core = { path = "../aqua-rs-sdk-core", features = ["native"] }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+thiserror = "2.0"
+hex = "0.4"
+
+# Name rules (spec-type-registry.md 3.3) need real Unicode tables: NFC
+# normalization and per-scalar script lookup. Hand-rolling either would
+# silently diverge from the SDK's NameValidator.
+unicode-normalization = "0.1"
+unicode-script = "0.5"
+
+# Optional, `server` feature only.
+axum = { version = "0.8", optional = true }
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "net", "signal"], optional = true }
+tower = { version = "0.5", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "net", "time"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+# Cross-SDK compatibility check only (tests/cross_sdk.rs, all #[ignore]d).
+# The full SDK ships the three registration templates as built-ins; this
+# dependency exists purely to assert our vendored JSON hashes match it.
+aqua-rs-sdk = { path = "../aqua-rs-sdk", features = ["native"] }

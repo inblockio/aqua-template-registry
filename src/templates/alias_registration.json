@@ -1,0 +1,44 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0xc3d4e5f607182930a4b5c6d7e8f9091b",
+  "local_timestamp": 1762900400,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "vendor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "alias_name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "target_hash": {
+        "type": "string",
+        "pattern": "^0x[0-9a-fA-F]{64}$"
+      }
+    },
+    "required": [
+      "vendor",
+      "alias_name",
+      "target_hash"
+    ],
+    "additionalProperties": false
+  },
+  "bounds": {
+    "max_chain_depth": 4,
+    "structural_links": {
+      "required": 0,
+      "max": 2
+    },
+    "max_signature_branches": 2,
+    "max_timestamp_branches": 1,
+    "max_anchor_branches": 2,
+    "max_total_revisions": 32
+  }
+}

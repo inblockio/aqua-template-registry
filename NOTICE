@@ -1,0 +1,59 @@
+aqua-template-registry
+Copyright 2026 inblock.io assets GmbH
+
+This product includes software developed at inblock.io assets GmbH.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+--------------------------------------------------------------------------
+Portions derived from aqua-rs-sdk
+--------------------------------------------------------------------------
+
+This project incorporates material from the Aqua Protocol Rust SDK
+("aqua-rs-sdk"), Copyright inblock.io assets GmbH, licensed under the
+Apache License, Version 2.0.
+
+1. Name validation rules (src/name.rs)
+
+   The registry name validation and normalization logic in `src/name.rs` is
+   a port of `aqua-rs-sdk/src/registry/name.rs`. The rules (NFC
+   normalization, Unicode script isolation, allowed character categories,
+   the 64 and 128 scalar length caps, and Latin case folding) implement
+   section 3.3 of the Aqua Protocol type registry specification, and are
+   reproduced faithfully so that names resolve identically in both
+   implementations. Divergence would silently break name resolution
+   compatibility.
+
+2. Registration template definitions (src/templates/*.json)
+
+   The three registration template definitions
+
+       src/templates/vendor_registration.json
+       src/templates/template_registration.json
+       src/templates/alias_registration.json
+
+   are byte-identical copies of the corresponding files in
+   `aqua-rs-sdk/src/schema/templates/`. They are vendored rather than
+   depended upon because `aqua-rs-sdk-core`, this project's only runtime
+   dependency on the SDK family, deliberately ships no registration
+   templates.
+
+   A template's hash is its type identity, so these files must never be
+   reformatted, re-indented, or otherwise modified. The tests in
+   `tests/cross_sdk.rs` assert that the hashes computed from these copies
+   equal the constants `VendorRegistration::TEMPLATE_LINK`,
+   `TemplateRegistration::TEMPLATE_LINK`, and
+   `AliasRegistration::TEMPLATE_LINK` in aqua-rs-sdk.
+
+--------------------------------------------------------------------------
+Specification
+--------------------------------------------------------------------------
+
+The behavior implemented here follows the Aqua Protocol specifications:
+
+    extensions/spec-type-registry.md     (sections 3 and 8)
+    extensions/spec-module-ecosystem.md  (sections 7, 8, and 11)
