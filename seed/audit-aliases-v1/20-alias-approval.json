@@ -1,0 +1,45 @@
+{
+  "revisions": {
+    "0x162019a3e73bc6e59dee99e79f92ad7460a4f2113a4e4c62f3ac9c4359ae82503c9d": {
+      "previous_revision": "0x1620ef34a18591833dd286be1a0b5a17e27983b48463c442a91dc13cb29484026ffc",
+      "revision_type": "0x1620d82b8cb8caef2658cd6f529663dbf9e915f25c04a0b56807329562d39260f294",
+      "nonce": "0xddcb3b6b9ec94538dc5d843a2798f0f5",
+      "local_timestamp": 1786126305,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "vendor": "inblockio",
+        "alias_name": "approval",
+        "target_hash": "0xcd588f6994409f3088eef84d231027ba69a1d9d7193fcb1bf0d07a1716ba6560"
+      }
+    },
+    "0x16204fde84001b4f46d4cfc43dac3ac3fa225214d0860108b19de44cbf8fc83283a8": {
+      "previous_revision": "0x162019a3e73bc6e59dee99e79f92ad7460a4f2113a4e4c62f3ac9c4359ae82503c9d",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0x55adb75215f49ff527c0d9c07febb5e3",
+      "local_timestamp": 1786126305,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0xce5368be6c725a46e7a04a39ce6d1e08f4f40f485071400ebd2a026a9355901a53691e07f35abd55d4ab6032ccdbb342077549a8b70744c69067807d0dcbb509",
+        "signature_public_identifier": "0xa00819aee508a7471603abe925c8cc6e8d6b8e5374464b4e371a320ffac26f67"
+      }
+    },
+    "0x1620ef34a18591833dd286be1a0b5a17e27983b48463c442a91dc13cb29484026ffc": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0x7d043163d671ab01639f603935d690a0",
+      "local_timestamp": 1786126304,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x1620d82b8cb8caef2658cd6f529663dbf9e915f25c04a0b56807329562d39260f294"
+      ]
+    }
+  },
+  "file_index": {
+    "0x162019a3e73bc6e59dee99e79f92ad7460a4f2113a4e4c62f3ac9c4359ae82503c9d": "object_0x162019",
+    "0x1620ef34a18591833dd286be1a0b5a17e27983b48463c442a91dc13cb29484026ffc": "anchor_0x1620ef"
+  }
+}

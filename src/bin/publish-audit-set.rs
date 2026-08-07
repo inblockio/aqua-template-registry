@@ -110,6 +110,7 @@ const AUDIT_SET: &[(&str, &str, &str)] = &[
 ];
 
 struct Args {
+    aliases_only: bool,
     head_only: bool,
     key: PathBuf,
     data_dir: PathBuf,
@@ -121,6 +122,7 @@ struct Args {
 fn parse_args() -> Result<Args, String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let mut args = Args {
+        aliases_only: false,
         head_only: false,
         key: PathBuf::from(home).join(".aqua-registry-publisher/inblockio.key"),
         data_dir: PathBuf::from("./data"),
@@ -146,6 +148,10 @@ fn parse_args() -> Result<Args, String> {
             "--seed-out" => args.seed_out = Some(PathBuf::from(need(i)?)),
             "--head-only" => {
                 args.head_only = true;
+                step = 1;
+            }
+            "--aliases-only" => {
+                args.aliases_only = true;
                 step = 1;
             }
             "-h" | "--help" => {
@@ -223,6 +229,140 @@ fn load_or_create_key(path: &Path) -> Result<PublisherKey, Box<dyn std::error::E
 
 /// Filename of the signed feed head inside a seed set.
 const FEED_HEAD_FILE: &str = "13-feed-head.json";
+
+/// Short aliases for the audit set: (alias name, target template name).
+///
+/// Aliases live in the same namespace and point at a template hash, so these
+/// are purely a convenience for humans typing qualified names. They are
+/// published as their own seed set rather than added to audit-set-v1, because
+/// audit-set-v1's twelve signed trees and its feed head are published bytes and
+/// must not move.
+const AUDIT_ALIASES: &[(&str, &str)] = &[
+    ("artifact", "audit_artifact"),
+    ("turn", "audit_user_turn_marker"),
+    ("prompt", "audit_user_prompt"),
+    ("thinking", "audit_agent_thinking"),
+    ("tool_call", "audit_agent_tool_call"),
+    ("api_response", "audit_api_response"),
+    ("tool_result", "audit_tool_result"),
+    ("approval", "audit_hitl_approval"),
+    ("response", "audit_agent_response"),
+    ("round", "audit_round_anchor"),
+    ("session", "audit_session_close"),
+];
+
+/// Publish the short aliases for an already-published audit set.
+///
+/// Reads the target hashes out of the existing manifest, so the aliases point
+/// at exactly the templates that were published rather than at whatever core
+/// currently hashes to. Writes a separate seed directory and, because the
+/// publisher's feed is now longer, a fresh feed head covering everything.
+///
+/// The previous head stays valid: it commits to a prefix, and
+/// `check_against_entries` accepts more entries than a head covers. A
+/// subscriber that only has the old head keeps working.
+async fn publish_aliases(
+    registry: &Registry,
+    aquafier: &Aquafier,
+    key: &PublisherKey,
+    vendor: &str,
+    set_dir: &Path,
+    out_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(set_dir.join("manifest.json"))?)?;
+    let did = manifest["publisher_did"]
+        .as_str()
+        .ok_or("no publisher_did")?;
+    if did != key.did() {
+        return Err(format!("that set was published by {did}, this key is {}", key.did()).into());
+    }
+
+    let mut target_of: std::collections::BTreeMap<&str, String> = Default::default();
+    for r in manifest["registrations"]
+        .as_array()
+        .ok_or("no registrations")?
+    {
+        if r["kind"] == "template" {
+            target_of.insert(
+                AUDIT_ALIASES
+                    .iter()
+                    .map(|(_, t)| *t)
+                    .find(|t| Some(*t) == r["name"].as_str())
+                    .unwrap_or_default(),
+                r["template_hash"]
+                    .as_str()
+                    .ok_or("no template_hash")?
+                    .to_string(),
+            );
+        }
+    }
+
+    std::fs::create_dir_all(out_dir)?;
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+
+    for (alias, target_name) in AUDIT_ALIASES {
+        let target = target_of
+            .get(target_name)
+            .ok_or_else(|| format!("{target_name} is not in the published set"))?;
+        let tree = publisher::alias_registration(aquafier, key, vendor, alias, target).await?;
+        let body = publisher::to_json_pretty(&tree)?;
+        let receipt = registry.submit_alias(&body).await?;
+        println!(
+            "seq {:>2}  alias     {}",
+            receipt.seq, receipt.qualified_name
+        );
+
+        let file = format!("{:02}-alias-{alias}.json", receipt.seq);
+        std::fs::write(out_dir.join(&file), &body)?;
+        entries.push(serde_json::json!({
+            "seq": receipt.seq,
+            "kind": "alias",
+            "alias_name": alias,
+            "targets": target_name,
+            "qualified_name": receipt.qualified_name,
+            "target_hash": target,
+            "tree_tip": receipt.tree_tip,
+            "tree_file": file,
+        }));
+    }
+
+    // A fresh head over the publisher's whole feed, aliases included.
+    let tips = registry.publisher_entry_tips(key.did());
+    let head_tree =
+        feedhead::build(aquafier, &key.credentials(), key.did(), &tips, now_secs()).await?;
+    let head_body = publisher::to_json_pretty(&head_tree)?;
+    let head_receipt = registry.submit_head(&head_body).await?;
+    let head_file = format!("{:02}-feed-head.json", head_receipt.head_seq);
+    std::fs::write(out_dir.join(&head_file), &head_body)?;
+    println!(
+        "feed head: covers {} entries, root {}",
+        head_receipt.head_seq, head_receipt.merkle_root
+    );
+
+    let out_manifest = serde_json::json!({
+        "set": "audit-aliases-v1",
+        "extends": "audit-set-v1",
+        "vendor": vendor,
+        "publisher_did": key.did(),
+        "registration_count": entries.len(),
+        "registrations": entries,
+        "feed_head": {
+            "file": head_file,
+            "head_seq": head_receipt.head_seq,
+            "merkle_root": head_receipt.merkle_root,
+            "leaf_version": feedhead::LEAF_VERSION,
+            "tree_tip": head_receipt.tree_tip,
+            "covers": "audit-set-v1 plus audit-aliases-v1",
+        },
+    });
+    std::fs::write(
+        out_dir.join("manifest.json"),
+        format!("{}\n", serde_json::to_string_pretty(&out_manifest)?),
+    )?;
+    println!("wrote {}", out_dir.display());
+    Ok(())
+}
 
 fn now_secs() -> u64 {
     std::time::SystemTime::now()
@@ -345,6 +485,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Regenerating the whole set to add a head would resign all twelve trees
     // with fresh nonces, replacing bytes that are already published. This path
     // reads the committed manifest instead and commits to exactly those tips.
+    if args.aliases_only {
+        let seed_out = args
+            .seed_out
+            .clone()
+            .ok_or("--aliases-only needs --seed-out for the new alias set")?;
+        let set_dir = seed_out
+            .parent()
+            .ok_or("--seed-out has no parent")?
+            .join("audit-set-v1");
+        let registry = Registry::open(&args.data_dir)?;
+        let aquafier = Aquafier::new();
+        return publish_aliases(
+            &registry,
+            &aquafier,
+            &key,
+            &args.vendor,
+            &set_dir,
+            &seed_out,
+        )
+        .await;
+    }
+
     if args.head_only {
         let seed_dir = args
             .seed_out

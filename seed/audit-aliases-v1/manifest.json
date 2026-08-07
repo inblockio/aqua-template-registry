@@ -1,0 +1,127 @@
+{
+  "set": "audit-aliases-v1",
+  "extends": "audit-set-v1",
+  "vendor": "inblockio",
+  "publisher_did": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+  "registration_count": 11,
+  "registrations": [
+    {
+      "seq": 13,
+      "kind": "alias",
+      "alias_name": "artifact",
+      "targets": "audit_artifact",
+      "qualified_name": "inblockio/artifact",
+      "target_hash": "0x431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3",
+      "tree_tip": "0x1620987683f55ea20ca9049f01aec08a6953d9ae20d0a1015e426005a1d67859cf69",
+      "tree_file": "13-alias-artifact.json"
+    },
+    {
+      "seq": 14,
+      "kind": "alias",
+      "alias_name": "turn",
+      "targets": "audit_user_turn_marker",
+      "qualified_name": "inblockio/turn",
+      "target_hash": "0x9bf38992cb2cc1230edb6539a98e6d3c889c69aa09b1764a4b91b30cb6a36990",
+      "tree_tip": "0x1620139a6436767828a4288db69a59dcee61ef94bb5b33b1fcdfa9d7dc6bfaa905a2",
+      "tree_file": "14-alias-turn.json"
+    },
+    {
+      "seq": 15,
+      "kind": "alias",
+      "alias_name": "prompt",
+      "targets": "audit_user_prompt",
+      "qualified_name": "inblockio/prompt",
+      "target_hash": "0x80143d8018fa7a0fa959c115ff7bf7da0d3363192db5202f2904b4626559ecc7",
+      "tree_tip": "0x1620d186afa8671cacc704dde6ddf099074c12bcfd8c595f450254168489a043f8d2",
+      "tree_file": "15-alias-prompt.json"
+    },
+    {
+      "seq": 16,
+      "kind": "alias",
+      "alias_name": "thinking",
+      "targets": "audit_agent_thinking",
+      "qualified_name": "inblockio/thinking",
+      "target_hash": "0xfe1d5fd50335d5d21f3f1976baadc9eab68a0506241ed5303bb8ad0a25a407f1",
+      "tree_tip": "0x1620bf1fe22d71fc793bb28eb9262366d3576c01a938afe93e16ad301b3e6792c9e4",
+      "tree_file": "16-alias-thinking.json"
+    },
+    {
+      "seq": 17,
+      "kind": "alias",
+      "alias_name": "tool_call",
+      "targets": "audit_agent_tool_call",
+      "qualified_name": "inblockio/tool_call",
+      "target_hash": "0x13d08a7ea2a0dc5f4d5a380d9dd9456ec10392bc752f152517dd227bb272592f",
+      "tree_tip": "0x162056ba018d2c1f4e0f8c5d88fbd55553848b6f30495e8f43586dfa69d772f79278",
+      "tree_file": "17-alias-tool_call.json"
+    },
+    {
+      "seq": 18,
+      "kind": "alias",
+      "alias_name": "api_response",
+      "targets": "audit_api_response",
+      "qualified_name": "inblockio/api_response",
+      "target_hash": "0x6d1e300bbb0145cedc1a2ff19fd1ad0e0dcfcfde6a4a9b0d6ea67c7d31c4a129",
+      "tree_tip": "0x16209fc829cf146dffb77f917e0ce9e3dcac73afc28f5523f7bc7fa0d6fb39e86793",
+      "tree_file": "18-alias-api_response.json"
+    },
+    {
+      "seq": 19,
+      "kind": "alias",
+      "alias_name": "tool_result",
+      "targets": "audit_tool_result",
+      "qualified_name": "inblockio/tool_result",
+      "target_hash": "0xad46f51cfce3fd961acb2a3d9047b4c217c3da43c32addc41e8e11b84b5c4732",
+      "tree_tip": "0x16202b53864f9516c2f038c01377bfa89d95aa7942271388c71e2cfa7decc1f3b262",
+      "tree_file": "19-alias-tool_result.json"
+    },
+    {
+      "seq": 20,
+      "kind": "alias",
+      "alias_name": "approval",
+      "targets": "audit_hitl_approval",
+      "qualified_name": "inblockio/approval",
+      "target_hash": "0xcd588f6994409f3088eef84d231027ba69a1d9d7193fcb1bf0d07a1716ba6560",
+      "tree_tip": "0x16204fde84001b4f46d4cfc43dac3ac3fa225214d0860108b19de44cbf8fc83283a8",
+      "tree_file": "20-alias-approval.json"
+    },
+    {
+      "seq": 21,
+      "kind": "alias",
+      "alias_name": "response",
+      "targets": "audit_agent_response",
+      "qualified_name": "inblockio/response",
+      "target_hash": "0xe36f3af11b2c6d5c94e2862e4a66db016ff8e8f5486fe72594daa7df480c5413",
+      "tree_tip": "0x162050f38db7f2ac2d7cd6ea598319bb85720e265e0e3032c82d9f05c9c4256ce841",
+      "tree_file": "21-alias-response.json"
+    },
+    {
+      "seq": 22,
+      "kind": "alias",
+      "alias_name": "round",
+      "targets": "audit_round_anchor",
+      "qualified_name": "inblockio/round",
+      "target_hash": "0xf174f2f669d102d3d74efb80248a08485fe2c40d18b2df5ccc7d225e794b63e7",
+      "tree_tip": "0x162061d33a1be4993110faa2bf2559c01c77f881605fbb182b44f46325fdad60ce6c",
+      "tree_file": "22-alias-round.json"
+    },
+    {
+      "seq": 23,
+      "kind": "alias",
+      "alias_name": "session",
+      "targets": "audit_session_close",
+      "qualified_name": "inblockio/session",
+      "target_hash": "0x9069525103b9408f039a41454d25ed5ffc59aed9e46224cb19864f2e71e0c23b",
+      "tree_tip": "0x162012fb4616ed33a64def5602ef6485e2c5e7026df54c0c38c115ea24ebf1af2e41",
+      "tree_file": "23-alias-session.json"
+    }
+  ],
+  "feed_head": {
+    "file": "23-feed-head.json",
+    "head_seq": 23,
+    "merkle_root": "0xc4b129fb0659f3d9ba1a55bff42e6c2567e982b19ace0076a9e366d4fb62b025",
+    "leaf_version": 1,
+    "tree_tip": "0x1620e63269e38a6340fbf67633aaa121df93616a2e198c7d069123980ccb7eeae437",
+    "covers": "audit-set-v1 plus audit-aliases-v1"
+  }
+}

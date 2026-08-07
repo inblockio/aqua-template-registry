@@ -1,0 +1,47 @@
+{
+  "revisions": {
+    "0x16204dc0288b844dbeac921fd2cec22e473745610dff158e8ceea2b1f9fee41be2ac": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0xe71a08943aaaf86e332b8ea3a511a083",
+      "local_timestamp": 1786126304,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x162077c13274ab93b2707017db0ba8e5b872fce94e86ba54064235bcb528d1879cb9"
+      ]
+    },
+    "0x1620e63269e38a6340fbf67633aaa121df93616a2e198c7d069123980ccb7eeae437": {
+      "previous_revision": "0x1620f0a61b02f1ec59943c452d8f602b919e08fce758fd99c8c9212d6068880dcf9c",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0x496bce4440b9e6987ff26b6b0662ba40",
+      "local_timestamp": 1786126305,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0x62d5cf120a88f3326944008ab401b7a6d87d5cf78568ee6f420351981fdd486ca0b4a23619dfa64ee12135444c31d32fc7d1286df057ada8a04fd9b3b2494908",
+        "signature_public_identifier": "0xa00819aee508a7471603abe925c8cc6e8d6b8e5374464b4e371a320ffac26f67"
+      }
+    },
+    "0x1620f0a61b02f1ec59943c452d8f602b919e08fce758fd99c8c9212d6068880dcf9c": {
+      "previous_revision": "0x16204dc0288b844dbeac921fd2cec22e473745610dff158e8ceea2b1f9fee41be2ac",
+      "revision_type": "0x162077c13274ab93b2707017db0ba8e5b872fce94e86ba54064235bcb528d1879cb9",
+      "nonce": "0x4c8df7ca43e543eee10bb3575931d805",
+      "local_timestamp": 1786126305,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "signer_did": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+        "head_seq": 23,
+        "merkle_root": "0xc4b129fb0659f3d9ba1a55bff42e6c2567e982b19ace0076a9e366d4fb62b025",
+        "leaf_version": 1,
+        "covered_at": 1786126305
+      }
+    }
+  },
+  "file_index": {
+    "0x16204dc0288b844dbeac921fd2cec22e473745610dff158e8ceea2b1f9fee41be2ac": "anchor_0x16204d",
+    "0x1620f0a61b02f1ec59943c452d8f602b919e08fce758fd99c8c9212d6068880dcf9c": "object_0x1620f0"
+  }
+}
