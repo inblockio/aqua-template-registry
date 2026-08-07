@@ -16,6 +16,11 @@ name = "registryd"
 path = "src/bin/registryd.rs"
 required-features = ["server"]
 
+[[bin]]
+name = "publish-audit-set"
+path = "src/bin/publish-audit-set.rs"
+required-features = ["server"]
+
 [features]
 default = ["server"]
 # HTTP surface: the axum router and the registryd binary.
