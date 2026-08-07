@@ -1,0 +1,58 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0xfeed0ead0000000000000000000000d1",
+  "local_timestamp": 1786060800,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "signer_did": {
+        "type": "string",
+        "pattern": "^did:(pkh|key):",
+        "maxLength": 256,
+        "description": "DID of the publisher committing to their own feed. Must equal the DID that signed this tree."
+      },
+      "head_seq": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Number of the publisher's own feed entries covered by this commitment, counted from their first"
+      },
+      "merkle_root": {
+        "type": "string",
+        "pattern": "^0x[0-9a-f]{64}$",
+        "description": "SHA3-256 Merkle root over the head_seq leaves, one per covered entry"
+      },
+      "leaf_version": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Version of the leaf and root construction. A verifier that does not implement this version must refuse the head rather than guess."
+      },
+      "covered_at": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Unix-seconds when the publisher made this commitment"
+      }
+    },
+    "required": [
+      "signer_did",
+      "head_seq",
+      "merkle_root",
+      "leaf_version",
+      "covered_at"
+    ],
+    "additionalProperties": false
+  },
+  "bounds": {
+    "max_chain_depth": 4,
+    "structural_links": {
+      "required": 0,
+      "max": 2
+    },
+    "max_signature_branches": 2,
+    "max_timestamp_branches": 1,
+    "max_anchor_branches": 2,
+    "max_total_revisions": 32
+  }
+}

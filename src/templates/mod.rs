@@ -36,6 +36,20 @@ pub const TEMPLATE_REGISTRATION_JSON: &str = include_str!("template_registration
 /// Byte-identical copy of `aqua-rs-sdk/src/schema/templates/alias_registration.json`.
 pub const ALIAS_REGISTRATION_JSON: &str = include_str!("alias_registration.json");
 
+/// The `feed_head` template, defined by THIS project rather than vendored.
+///
+/// The three registration templates above are copies of the full SDK's, and
+/// their hashes are frozen ecosystem constants. This one is different: no SDK
+/// defines a feed head, so this file is the definition, and its hash becomes a
+/// constant the moment anything is published against it. It carries a pinned
+/// nonce and `local_timestamp` for exactly that reason: both feed into the
+/// hash, so leaving either to chance would mint a new type on every build.
+///
+/// Data only, like everything else here. No `verification` section, nothing to
+/// execute, and no `derives_from`: a feed head is not an audit artifact and
+/// does not belong to that family.
+pub const FEED_HEAD_JSON: &str = include_str!("feed_head.json");
+
 /// A parsed, hashed registration template plus the single-revision tree that
 /// carries it to the verifier.
 pub struct RegistrationTemplate {
@@ -127,22 +141,69 @@ pub fn kind_for_link(link_in: &RevisionLink) -> Option<RegistrationKind> {
     all().iter().find(|t| &t.link == link_in).map(|t| t.kind)
 }
 
-/// All three template trees, wrapped for `verify_aqua_tree_with_linked_trees`.
+/// Every template this project defines, wrapped for
+/// `verify_aqua_tree_with_linked_trees`.
 ///
-/// Passing all three on every verification costs three extra single-revision
-/// tree verifications and removes any need for the submitter to embed the
-/// template themselves. Submitters who do embed it still verify: core's
-/// `resolve_template` checks the tree's own revisions before the linked trees.
+/// That is the three registration templates plus `feed_head`. Passing all four
+/// on every verification costs four extra single-revision tree verifications
+/// and removes any need for the submitter to embed the template themselves.
+/// Submitters who do embed it still verify: core's `resolve_template` checks
+/// the tree's own revisions before the linked trees.
+///
+/// Offering a template does not accept it. What a given endpoint will accept is
+/// decided afterwards by checking the object's own `revision_type`, so making
+/// `feed_head` resolvable here does not make a feed head a valid registration.
 pub fn linked_trees() -> Vec<AquaTreeWrapper> {
     all()
         .iter()
         .map(|t| AquaTreeWrapper::new(t.tree.clone(), None, None))
+        .chain(std::iter::once(AquaTreeWrapper::new(
+            feed_head_tree().clone(),
+            None,
+            None,
+        )))
         .collect()
 }
 
-/// The three templates, for introspection endpoints and tests.
+/// The three registration templates, for introspection endpoints and tests.
 pub fn catalog() -> &'static [RegistrationTemplate] {
     all().as_slice()
+}
+
+// ---------------------------------------------------------------------------
+// The feed_head template
+// ---------------------------------------------------------------------------
+
+fn feed_head_entry() -> &'static (RevisionLink, Tree) {
+    static FEED_HEAD: OnceLock<(RevisionLink, Tree)> = OnceLock::new();
+    FEED_HEAD.get_or_init(|| {
+        let template: Template = serde_json::from_str(FEED_HEAD_JSON)
+            .unwrap_or_else(|e| panic!("feed_head.json does not parse as a core Template: {e}"));
+        let link = template
+            .calculate_link(HashType::Sha3_256)
+            .unwrap_or_else(|e| panic!("cannot hash feed_head.json: {e}"));
+        let mut revisions = BTreeMap::new();
+        revisions.insert(link.clone(), AnyRevision::Template(template));
+        let mut file_index = BTreeMap::new();
+        file_index.insert(link.clone(), "feed_head".to_string());
+        (
+            link,
+            Tree {
+                revisions,
+                file_index,
+            },
+        )
+    })
+}
+
+/// Identity hash of the `feed_head` template.
+pub fn feed_head_link() -> &'static RevisionLink {
+    &feed_head_entry().0
+}
+
+/// The `feed_head` template as a single-revision tree.
+pub fn feed_head_tree() -> &'static Tree {
+    &feed_head_entry().1
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +275,8 @@ mod tests {
         "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197";
     const ALIAS_LINK_HEX: &str =
         "0x1620d82b8cb8caef2658cd6f529663dbf9e915f25c04a0b56807329562d39260f294";
+    const FEED_HEAD_LINK_HEX: &str =
+        "0x162077c13274ab93b2707017db0ba8e5b872fce94e86ba54064235bcb528d1879cb9";
 
     #[test]
     fn vendored_templates_parse_and_hash() {
@@ -264,8 +327,36 @@ mod tests {
     }
 
     #[test]
-    fn three_linked_trees_are_offered() {
-        assert_eq!(linked_trees().len(), 3);
+    fn four_linked_trees_are_offered() {
+        // Three registration templates plus feed_head.
+        assert_eq!(linked_trees().len(), 4);
+    }
+
+    #[test]
+    fn feed_head_parses_hashes_and_is_frozen() {
+        // feed_head's hash is this project's own constant. It is pinned here so
+        // that an accidental reformat of the JSON, or a change to its nonce or
+        // local_timestamp, is caught rather than silently minting a new type
+        // that no previously published head verifies against.
+        let link = feed_head_link();
+        assert_eq!(link.to_string(), FEED_HEAD_LINK_HEX);
+        assert_eq!(&link_of_definition(FEED_HEAD_JSON).unwrap(), link);
+        assert_eq!(feed_head_tree().revisions.len(), 1);
+    }
+
+    #[test]
+    fn feed_head_is_not_a_registration_kind() {
+        // It resolves as a linked tree but must never classify as a
+        // registration, or a feed head could be POSTed to /templates.
+        assert_eq!(kind_for_link(feed_head_link()), None);
+    }
+
+    #[test]
+    fn feed_head_carries_no_executable_content() {
+        // Data only, asserted rather than assumed.
+        let v: serde_json::Value = serde_json::from_str(FEED_HEAD_JSON).unwrap();
+        assert!(v.get("verification").is_none());
+        assert!(v.get("derives_from").is_none());
     }
 
     #[test]

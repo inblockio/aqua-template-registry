@@ -76,6 +76,7 @@
 #![warn(missing_docs)]
 
 pub mod error;
+pub mod feedhead;
 pub mod import;
 pub mod model;
 pub mod name;
