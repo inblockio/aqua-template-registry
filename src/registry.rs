@@ -150,6 +150,7 @@ impl Registry {
 
         let seq = index.head_seq + 1;
         let entry = FeedEntry {
+            record_version: crate::model::RECORD_VERSION,
             seq,
             kind: accepted.kind,
             publisher_did: accepted.publisher_did.clone(),

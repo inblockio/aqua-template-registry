@@ -144,6 +144,13 @@ impl RegistrationPayload {
 // Feed
 // ---------------------------------------------------------------------------
 
+/// The record format this build writes.
+pub const RECORD_VERSION: u32 = 1;
+
+fn default_record_version() -> u32 {
+    1
+}
+
 /// One accepted registration, as persisted in the append-only feed.
 ///
 /// `seq` is registry-global and monotonically increasing. Consumers subscribe by
@@ -151,6 +158,16 @@ impl RegistrationPayload {
 /// `seq` they have processed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeedEntry {
+    /// On-disk record format version.
+    ///
+    /// Defaulted on read, so every entry written before this field existed
+    /// loads as version 1 and no data directory needs migrating. See the
+    /// README's "Store format and versioning" section for the policy: the feed
+    /// is append only and entries are never rewritten in place, so a format
+    /// change means new entries carry a higher version while old ones keep
+    /// theirs, and a reader must handle every version it may encounter.
+    #[serde(default = "default_record_version")]
+    pub record_version: u32,
     /// Registry-global monotonic sequence number, starting at 1.
     pub seq: u64,
     /// Which registration template was used.

@@ -577,8 +577,36 @@ mod tests {
     /// Builds a `FeedEntry` using the crate's real model types, so these
     /// tests fail to compile (rather than silently drift) if the model
     /// shape ever changes.
+    #[test]
+    fn an_entry_written_before_record_version_existed_still_loads() {
+        // The R8 compatibility claim, asserted rather than assumed. A data
+        // directory written by an earlier build has entry files with no
+        // record_version field; they must load as version 1 and not as a
+        // corrupt store, or upgrading the binary would strand the feed.
+        let dir = TempDir::new();
+        let store = Store::open(dir.path()).unwrap();
+        let legacy = r#"{
+          "seq": 1,
+          "kind": "vendor",
+          "publisher_did": "did:key:z6MkLegacy",
+          "tree_tip": "0x1620aa",
+          "received_at": 1,
+          "qualified_name": "legacy",
+          "payload": { "kind": "vendor", "vendor_name": "legacy", "vendor_did": "did:key:z6MkLegacy" }
+        }"#;
+        std::fs::write(dir.path().join("entries").join("000000000001.json"), legacy).unwrap();
+
+        let entries = store
+            .load_all()
+            .expect("a pre-versioning entry must still load");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].record_version, 1, "absent means version 1");
+        assert_eq!(entries[0].seq, 1);
+    }
+
     fn sample_entry(seq: u64, tree_tip: &str) -> FeedEntry {
         FeedEntry {
+            record_version: crate::model::RECORD_VERSION,
             seq,
             kind: RegistrationKind::Vendor,
             publisher_did: "did:key:z6MkTestPublisher".to_string(),
