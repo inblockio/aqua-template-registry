@@ -1,0 +1,47 @@
+{
+  "revisions": {
+    "0x16201836e9594635f5c45d0690059b3479d0862294a4249304fffb87846a46a74f19": {
+      "previous_revision": "0x1620b89888982860b664619e9807a6363319e6d92d58842a5ccf96a52d0e530cd89b",
+      "revision_type": "0x162077c13274ab93b2707017db0ba8e5b872fce94e86ba54064235bcb528d1879cb9",
+      "nonce": "0x5825b267db739c21e46207b0f9c1e5bc",
+      "local_timestamp": 1786124084,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "signer_did": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+        "head_seq": 12,
+        "merkle_root": "0x6c143d6dbe550f6b0a08c41804341fec99f93091948131173aa930ca199e711e",
+        "leaf_version": 1,
+        "covered_at": 1786124084
+      }
+    },
+    "0x1620a5fe879e4f3a9bef5a32ba83a6b75d9276a05a70f381030282421298d65897da": {
+      "previous_revision": "0x16201836e9594635f5c45d0690059b3479d0862294a4249304fffb87846a46a74f19",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0x249bdc659bc56ec1734535e26e1f86b0",
+      "local_timestamp": 1786124084,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0xf91863b32c22532eaf45fe5c7b1f707a2481e53689c2c0361f6447bd1b154f16c8e2e7ec73ee0be53065049c1f1b64cf6e9c9263010177b2859d85f98d3c9a09",
+        "signature_public_identifier": "0xa00819aee508a7471603abe925c8cc6e8d6b8e5374464b4e371a320ffac26f67"
+      }
+    },
+    "0x1620b89888982860b664619e9807a6363319e6d92d58842a5ccf96a52d0e530cd89b": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0x9a97bb83fe3d6cbff3ff116f673ef135",
+      "local_timestamp": 1786124083,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x162077c13274ab93b2707017db0ba8e5b872fce94e86ba54064235bcb528d1879cb9"
+      ]
+    }
+  },
+  "file_index": {
+    "0x16201836e9594635f5c45d0690059b3479d0862294a4249304fffb87846a46a74f19": "object_0x162018",
+    "0x1620b89888982860b664619e9807a6363319e6d92d58842a5ccf96a52d0e530cd89b": "anchor_0x1620b8"
+  }
+}

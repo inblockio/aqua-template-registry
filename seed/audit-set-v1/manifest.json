@@ -139,5 +139,12 @@
       "tree_file": "12-template-audit_session_close.json",
       "definition_file": "definitions/audit_session_close.json"
     }
-  ]
+  ],
+  "feed_head": {
+    "file": "13-feed-head.json",
+    "head_seq": 12,
+    "merkle_root": "0x6c143d6dbe550f6b0a08c41804341fec99f93091948131173aa930ca199e711e",
+    "leaf_version": 1,
+    "tree_tip": "0x1620a5fe879e4f3a9bef5a32ba83a6b75d9276a05a70f381030282421298d65897da"
+  }
 }

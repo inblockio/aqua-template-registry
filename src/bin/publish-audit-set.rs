@@ -39,6 +39,7 @@
 use std::path::{Path, PathBuf};
 
 use aqua_rs_sdk_core::Aquafier;
+use aqua_template_registry::feedhead;
 use aqua_template_registry::model::TemplateRegistration;
 use aqua_template_registry::publisher::{self, PublisherKey};
 use aqua_template_registry::{templates, Registry};
@@ -109,6 +110,7 @@ const AUDIT_SET: &[(&str, &str, &str)] = &[
 ];
 
 struct Args {
+    head_only: bool,
     key: PathBuf,
     data_dir: PathBuf,
     core: PathBuf,
@@ -119,6 +121,7 @@ struct Args {
 fn parse_args() -> Result<Args, String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let mut args = Args {
+        head_only: false,
         key: PathBuf::from(home).join(".aqua-registry-publisher/inblockio.key"),
         data_dir: PathBuf::from("./data"),
         core: PathBuf::from("../aqua-rs-sdk-core"),
@@ -129,6 +132,7 @@ fn parse_args() -> Result<Args, String> {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < argv.len() {
+        let mut step = 2;
         let need = |i: usize| -> Result<String, String> {
             argv.get(i + 1)
                 .cloned()
@@ -140,13 +144,20 @@ fn parse_args() -> Result<Args, String> {
             "--core" => args.core = PathBuf::from(need(i)?),
             "--vendor" => args.vendor = need(i)?,
             "--seed-out" => args.seed_out = Some(PathBuf::from(need(i)?)),
+            "--head-only" => {
+                args.head_only = true;
+                step = 1;
+            }
             "-h" | "--help" => {
-                println!("publish-audit-set [--key PATH] [--data-dir PATH] [--core PATH] [--vendor NAME] [--seed-out PATH]");
+                println!(
+                    "publish-audit-set [--key PATH] [--data-dir PATH] [--core PATH]\n\
+                     [--vendor NAME] [--seed-out PATH] [--head-only]"
+                );
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument {other:?}")),
         }
-        i += 2;
+        i += step;
     }
     Ok(args)
 }
@@ -210,6 +221,91 @@ fn load_or_create_key(path: &Path) -> Result<PublisherKey, Box<dyn std::error::E
     Ok(key)
 }
 
+/// Filename of the signed feed head inside a seed set.
+const FEED_HEAD_FILE: &str = "13-feed-head.json";
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Sign a feed head over an already-published seed set, without touching it.
+///
+/// Reads the committed manifest for the tips, in the order they were
+/// registered, and commits to exactly those. The twelve signed registration
+/// trees are read but never rewritten: they are published bytes.
+async fn write_head_for_seed(
+    seed_dir: &Path,
+    key: &PublisherKey,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let manifest_path = seed_dir.join("manifest.json");
+    let text = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("cannot read {}: {e}", manifest_path.display()))?;
+    let mut manifest: serde_json::Value = serde_json::from_str(&text)?;
+
+    let did = manifest["publisher_did"]
+        .as_str()
+        .ok_or("manifest has no publisher_did")?
+        .to_string();
+    if did != key.did() {
+        return Err(format!(
+            "this seed set was published by {did}, but the key at hand is {}",
+            key.did()
+        )
+        .into());
+    }
+
+    let registrations = manifest["registrations"]
+        .as_array()
+        .ok_or("manifest has no registrations")?
+        .clone();
+    let mut ordered: Vec<(u64, String)> = registrations
+        .iter()
+        .map(|r| {
+            let seq = r["seq"].as_u64().ok_or("registration without seq")?;
+            let tip = r["tree_tip"]
+                .as_str()
+                .ok_or("registration without tree_tip")?
+                .to_string();
+            Ok::<_, Box<dyn std::error::Error>>((seq, tip))
+        })
+        .collect::<Result<_, _>>()?;
+    ordered.sort_by_key(|(seq, _)| *seq);
+    let tips: Vec<String> = ordered.into_iter().map(|(_, tip)| tip).collect();
+
+    let aquafier = Aquafier::new();
+    let tree = feedhead::build(&aquafier, &key.credentials(), key.did(), &tips, now_secs()).await?;
+    let body = publisher::to_json_pretty(&tree)?;
+
+    // Verify what was just built before writing it, so a broken head never
+    // reaches the seed directory.
+    let verified = feedhead::verify_head(&aquafier, &body, Some(key.did())).await?;
+    feedhead::check_against_entries(&verified, &tips)?;
+
+    std::fs::write(seed_dir.join(FEED_HEAD_FILE), &body)?;
+
+    manifest["feed_head"] = serde_json::json!({
+        "file": FEED_HEAD_FILE,
+        "head_seq": verified.head_seq,
+        "merkle_root": verified.merkle_root,
+        "leaf_version": feedhead::LEAF_VERSION,
+        "tree_tip": verified.tree_tip,
+    });
+    std::fs::write(
+        &manifest_path,
+        format!("{}\n", serde_json::to_string_pretty(&manifest)?),
+    )?;
+
+    println!("feed head: covers {} entries", verified.head_seq);
+    println!("  root     : {}", verified.merkle_root);
+    println!("  tree tip : {}", verified.tree_tip);
+    println!("  wrote    : {}", seed_dir.join(FEED_HEAD_FILE).display());
+    println!("  manifest : {}", manifest_path.display());
+    Ok(())
+}
+
 /// Parse core's `tests/audit_template_hashes.txt` into (name, bare hash) pairs.
 fn read_ledger(core: &Path) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
     let path = core.join("tests/audit_template_hashes.txt");
@@ -243,6 +339,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = load_or_create_key(&args.key)?;
     println!("publisher: {}", key.did());
     println!();
+
+    // ---- head-only: sign a commitment over an existing seed set ------------
+    //
+    // Regenerating the whole set to add a head would resign all twelve trees
+    // with fresh nonces, replacing bytes that are already published. This path
+    // reads the committed manifest instead and commits to exactly those tips.
+    if args.head_only {
+        let seed_dir = args
+            .seed_out
+            .clone()
+            .ok_or("--head-only needs --seed-out pointing at an existing seed set")?;
+        return write_head_for_seed(&seed_dir, &key).await;
+    }
 
     // ---- collect the set, checking every hash against core ------------------
     let ledger = read_ledger(&args.core)?;
@@ -370,6 +479,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         seed_files.push((tree_file, body));
     }
 
+    // ---- sign a feed head over everything just published -------------------
+    //
+    // Without this the registry could serve a subscriber a truncated view of
+    // the set and nothing would notice. The head is built over the publisher's
+    // own entries in feed order, which is exactly what the registry returns.
+    let tips = registry.publisher_entry_tips(key.did());
+    let head_tree =
+        feedhead::build(&aquafier, &key.credentials(), key.did(), &tips, now_secs()).await?;
+    let head_body = publisher::to_json_pretty(&head_tree)?;
+    let head_receipt = registry.submit_head(&head_body).await?;
+    println!();
+    println!(
+        "feed head: covers {} entries, root {}",
+        head_receipt.head_seq, head_receipt.merkle_root
+    );
+
     let stats = registry.stats();
     println!();
     println!(
@@ -409,6 +534,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
+        std::fs::write(seed_dir.join(FEED_HEAD_FILE), &head_body)?;
+
         let manifest = serde_json::json!({
             "set": "audit-set-v1",
             "vendor": args.vendor,
@@ -421,6 +548,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "definitions": "src/schema/templates",
             },
             "registrations": manifest_entries,
+            "feed_head": {
+                "file": FEED_HEAD_FILE,
+                "head_seq": head_receipt.head_seq,
+                "merkle_root": head_receipt.merkle_root,
+                "leaf_version": aqua_template_registry::feedhead::LEAF_VERSION,
+                "tree_tip": head_receipt.tree_tip,
+            },
         });
         std::fs::write(
             seed_dir.join("manifest.json"),
