@@ -1,0 +1,79 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0x00000000000000000000000000000000",
+  "local_timestamp": 1747526400,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "signer_did": {
+        "type": "string",
+        "pattern": "^did:(pkh|key):",
+        "maxLength": 256,
+        "description": "API attestor DID signing this observation"
+      },
+      "turn_id": {
+        "type": "string",
+        "pattern": "^0x(16|1e)20[0-9a-f]{64}$"
+      },
+      "seq_in_turn": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "method": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 16,
+        "description": "HTTP method (GET, POST, etc.)"
+      },
+      "endpoint": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024,
+        "description": "Endpoint path or full URL"
+      },
+      "status_code": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 999
+      },
+      "request_hash": {
+        "type": "string",
+        "pattern": "^0x[0-9a-f]{64}$",
+        "description": "Hex hash of the canonical request payload"
+      },
+      "response_body": {
+        "description": "Opaque response body (any JSON)"
+      },
+      "attested_origin": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "description": "Origin attested by the API attestor (e.g. 'api.example.com')"
+      },
+      "created_at": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "signer_did",
+      "turn_id",
+      "seq_in_turn",
+      "method",
+      "endpoint",
+      "status_code",
+      "request_hash",
+      "response_body",
+      "attested_origin",
+      "created_at"
+    ],
+    "additionalProperties": false
+  },
+  "derives_from": "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3",
+  "ancestry": [
+    "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3"
+  ]
+}

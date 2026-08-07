@@ -1,0 +1,47 @@
+{
+  "revisions": {
+    "0x1620424b89783561d78e9aca649e08df24bd2548ecf70e099bb8f304033418d45d8b": {
+      "previous_revision": "0x1620b70f4c4c74b80d50bfaf39a3ae1e9e02213fd5c8ee2cfdfa8241bf5717b83005",
+      "revision_type": "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197",
+      "nonce": "0x39165645eb507a17c89ba1b82e4a197c",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "vendor": "inblockio",
+        "name": "audit_tool_result",
+        "template_hash": "0xad46f51cfce3fd961acb2a3d9047b4c217c3da43c32addc41e8e11b84b5c4732",
+        "display_name": "Tool result",
+        "description": "The outcome of a tool invocation: the result payload, whether it succeeded, and an error message when it did not."
+      }
+    },
+    "0x1620445580a72bcc36986106b5d42bf50a2a253a445bd1a4d214341c49b743040a47": {
+      "previous_revision": "0x1620424b89783561d78e9aca649e08df24bd2548ecf70e099bb8f304033418d45d8b",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0x104ee6374feeeadeae0254f87c842aba",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0xe46a8f4d98cdb52c05e7ae8b28125f30bc82258abb5e0e909f5180aeefc74d6a6246bcee822b4e0d3b4f5b9d3a1db53af1ac1321a9ac0300a04c35a782a9e50f",
+        "signature_public_identifier": "0xa00819aee508a7471603abe925c8cc6e8d6b8e5374464b4e371a320ffac26f67"
+      }
+    },
+    "0x1620b70f4c4c74b80d50bfaf39a3ae1e9e02213fd5c8ee2cfdfa8241bf5717b83005": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0xc0b37842e7251453f228a8b8880b2bdd",
+      "local_timestamp": 1786094606,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197"
+      ]
+    }
+  },
+  "file_index": {
+    "0x1620424b89783561d78e9aca649e08df24bd2548ecf70e099bb8f304033418d45d8b": "object_0x162042",
+    "0x1620b70f4c4c74b80d50bfaf39a3ae1e9e02213fd5c8ee2cfdfa8241bf5717b83005": "anchor_0x1620b7"
+  }
+}

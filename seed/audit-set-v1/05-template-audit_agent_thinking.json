@@ -1,0 +1,47 @@
+{
+  "revisions": {
+    "0x162092c66bcb8caec7a127980403b70f0e434474fc7699a9bc9f2ad37d742adbf347": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0x03243b5eae1f83627b4bbdc5a5b8d004",
+      "local_timestamp": 1786094606,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197"
+      ]
+    },
+    "0x16209430053d80e46836feb32d04c896cc95c5bc9dfbe56b6b12d56c9163f54d031c": {
+      "previous_revision": "0x162092c66bcb8caec7a127980403b70f0e434474fc7699a9bc9f2ad37d742adbf347",
+      "revision_type": "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197",
+      "nonce": "0x68f4fcd846b4fe6a4e39d28b0b21cc34",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "vendor": "inblockio",
+        "name": "audit_agent_thinking",
+        "template_hash": "0xfe1d5fd50335d5d21f3f1976baadc9eab68a0506241ed5303bb8ad0a25a407f1",
+        "display_name": "Agent reasoning step",
+        "description": "A reasoning step the agent produced inside a turn, sequenced within that turn and attributed to a model round."
+      }
+    },
+    "0x1620e4100a7bf288dd5fd62bcc5b73eba9900b2aca394363986fac1ce440a5b93bb5": {
+      "previous_revision": "0x16209430053d80e46836feb32d04c896cc95c5bc9dfbe56b6b12d56c9163f54d031c",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0x1f3879e88220c8b6695729e2d08e6613",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0xb68ff778dd53852e36896bdc37a4f6e66009ba684ecfa0c22b801aa510f825eeed48d68cb5505303f027191763e8d37141eb94eefe0cad86f0f03fba2ac6190c",
+        "signature_public_identifier": "0xa00819aee508a7471603abe925c8cc6e8d6b8e5374464b4e371a320ffac26f67"
+      }
+    }
+  },
+  "file_index": {
+    "0x162092c66bcb8caec7a127980403b70f0e434474fc7699a9bc9f2ad37d742adbf347": "anchor_0x162092",
+    "0x16209430053d80e46836feb32d04c896cc95c5bc9dfbe56b6b12d56c9163f54d031c": "object_0x162094"
+  }
+}

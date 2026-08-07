@@ -1,0 +1,47 @@
+{
+  "revisions": {
+    "0x162067304692b712a878a64e5b020c7bed5be5377d38a462ee692b10a51dd4527358": {
+      "previous_revision": "0x1620889b4a24fd8ea0a5450107e90c25d3102491868529710dc61f2b8014cc64ed62",
+      "revision_type": "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197",
+      "nonce": "0xf4f53a62ef06d09f8537262ca4808419",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "vendor": "inblockio",
+        "name": "audit_user_turn_marker",
+        "template_hash": "0x9bf38992cb2cc1230edb6539a98e6d3c889c69aa09b1764a4b91b30cb6a36990",
+        "display_name": "User turn marker",
+        "description": "Opens a turn within an audited session, recording the session, the turn index, and the time the turn opened."
+      }
+    },
+    "0x1620889b4a24fd8ea0a5450107e90c25d3102491868529710dc61f2b8014cc64ed62": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0xefe50f5798eca0830eca97a580e0e79a",
+      "local_timestamp": 1786094606,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197"
+      ]
+    },
+    "0x1620fc6b3c0d1df1ceedb58589b7501a894ee7a075145229f6d7f4e45dbff5dc20af": {
+      "previous_revision": "0x162067304692b712a878a64e5b020c7bed5be5377d38a462ee692b10a51dd4527358",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0x005e9960eb2af0e1b5fbe2de8dd3bfa8",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0xe1035a6d5994a9ef267ecb89231c731f06fb38e9b2f7ea4db99f4e67de6a138677ab4c10d7d8f3dc392d5ad7d47088efb79f1956fa42bbd76e1ee031f9f55607",
+        "signature_public_identifier": "0xa00819aee508a7471603abe925c8cc6e8d6b8e5374464b4e371a320ffac26f67"
+      }
+    }
+  },
+  "file_index": {
+    "0x162067304692b712a878a64e5b020c7bed5be5377d38a462ee692b10a51dd4527358": "object_0x162067",
+    "0x1620889b4a24fd8ea0a5450107e90c25d3102491868529710dc61f2b8014cc64ed62": "anchor_0x162088"
+  }
+}

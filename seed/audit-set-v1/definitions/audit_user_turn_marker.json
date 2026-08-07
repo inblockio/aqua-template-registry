@@ -1,0 +1,46 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0x00000000000000000000000000000000",
+  "local_timestamp": 1747526400,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "signer_did": {
+        "type": "string",
+        "pattern": "^did:(pkh|key):",
+        "maxLength": 256,
+        "description": "The DID of the server signing the turn marker"
+      },
+      "session_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": "Session identifier"
+      },
+      "turn_index": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Monotonic turn counter within the session"
+      },
+      "opens_at": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Unix-seconds when this turn opens. Substitutes audit_artifact's created_at for T1."
+      }
+    },
+    "required": [
+      "signer_did",
+      "session_id",
+      "turn_index",
+      "opens_at"
+    ],
+    "additionalProperties": false
+  },
+  "derives_from": "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3",
+  "ancestry": [
+    "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3"
+  ]
+}

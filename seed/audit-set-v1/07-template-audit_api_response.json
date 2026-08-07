@@ -1,0 +1,47 @@
+{
+  "revisions": {
+    "0x162085d60eb7ce289ca78e07a2f0350bab042e105296cdb1563132bea6e7434d06e7": {
+      "previous_revision": "0x1620c0796fe63a2d52777120e5f941b61d466d3657b7fd8ef30d8e6bc237e2905d43",
+      "revision_type": "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197",
+      "nonce": "0x25429de679fab7fdc10ac8e29618f75c",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "vendor": "inblockio",
+        "name": "audit_api_response",
+        "template_hash": "0x6d1e300bbb0145cedc1a2ff19fd1ad0e0dcfcfde6a4a9b0d6ea67c7d31c4a129",
+        "display_name": "Attested API response",
+        "description": "A response received from an external API during a turn, recording the method, endpoint, status code, request hash, response body, and the attested origin it came from."
+      }
+    },
+    "0x1620b09b0661701b3af80089098ad238ac40e2a95d567523183b059c38db0b32e684": {
+      "previous_revision": "0x162085d60eb7ce289ca78e07a2f0350bab042e105296cdb1563132bea6e7434d06e7",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0x9d59988fa1a41d1619c67c059f64eafc",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0xed0dfce7dde155246f8640734aaa1b92034b01cb1738e10711e93904b6fa62d0018313e37749da0fb2e7972a88d39e512da1fc7f3421ec0c43f2e5d762e9960b",
+        "signature_public_identifier": "0xa00819aee508a7471603abe925c8cc6e8d6b8e5374464b4e371a320ffac26f67"
+      }
+    },
+    "0x1620c0796fe63a2d52777120e5f941b61d466d3657b7fd8ef30d8e6bc237e2905d43": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0xc4de2cd470495fc8395adbb1a5aa5350",
+      "local_timestamp": 1786094606,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197"
+      ]
+    }
+  },
+  "file_index": {
+    "0x162085d60eb7ce289ca78e07a2f0350bab042e105296cdb1563132bea6e7434d06e7": "object_0x162085",
+    "0x1620c0796fe63a2d52777120e5f941b61d466d3657b7fd8ef30d8e6bc237e2905d43": "anchor_0x1620c0"
+  }
+}

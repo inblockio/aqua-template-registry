@@ -1,0 +1,73 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0x00000000000000000000000000000000",
+  "local_timestamp": 1747526400,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "signer_did": {
+        "type": "string",
+        "pattern": "^did:(pkh|key):",
+        "maxLength": 256,
+        "description": "The DID of the server signing the round-close commitment"
+      },
+      "session_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": "Session identifier"
+      },
+      "turn_id": {
+        "type": "string",
+        "pattern": "^0x(16|1e)20[0-9a-f]{64}$",
+        "description": "Revision hash of the T1 turn marker that opened this turn"
+      },
+      "turn_index": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Monotonic turn counter within the session"
+      },
+      "artifact_count": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Number of artifacts included in the Merkle tree"
+      },
+      "leaf_hashes": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^0x(16|1e)20[0-9a-f]{64}$"
+        },
+        "description": "Ordered revision hashes of all artifacts in the turn (the Merkle leaves); naming values, so each is a full registry multihash (PCA-0015 §3.3)"
+      },
+      "merkle_root": {
+        "type": "string",
+        "pattern": "^0x[0-9a-f]{64}$",
+        "description": "SHA3-256 Merkle root over leaf_hashes"
+      },
+      "closed_at": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Unix-seconds when this turn was closed"
+      }
+    },
+    "required": [
+      "signer_did",
+      "session_id",
+      "turn_id",
+      "turn_index",
+      "artifact_count",
+      "leaf_hashes",
+      "merkle_root",
+      "closed_at"
+    ],
+    "additionalProperties": false
+  },
+  "derives_from": "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3",
+  "ancestry": [
+    "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3"
+  ]
+}

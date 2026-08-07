@@ -1,0 +1,47 @@
+{
+  "revisions": {
+    "0x16207939d5ecb15be3161f6f5aef0c9d0cdd6c893753c5573b27bfcc67856ca323cd": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0x34f6f7b267e6b12957317317ef368b74",
+      "local_timestamp": 1786094606,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197"
+      ]
+    },
+    "0x16208e7a2bd2fcacd251b8b2e9acb3ca444116c17d5d68077f380d520d9375dbd06d": {
+      "previous_revision": "0x16207939d5ecb15be3161f6f5aef0c9d0cdd6c893753c5573b27bfcc67856ca323cd",
+      "revision_type": "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197",
+      "nonce": "0x858af738458b0361cf4c7a37ad2e0572",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "vendor": "inblockio",
+        "name": "audit_hitl_approval",
+        "template_hash": "0xcd588f6994409f3088eef84d231027ba69a1d9d7193fcb1bf0d07a1716ba6560",
+        "display_name": "Human approval decision",
+        "description": "A human-in-the-loop decision on a proposed action, recording what was shown to the approver, the decision taken, and an optional rationale."
+      }
+    },
+    "0x1620c321f7d0a82359cbc5bc502b22efd786c5780565e9952b30f8fe722c031f320b": {
+      "previous_revision": "0x16208e7a2bd2fcacd251b8b2e9acb3ca444116c17d5d68077f380d520d9375dbd06d",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0x561519b1d455ac5fc8d8a66f14c103c6",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0xa73f79b364501b4b9f6cd3102fa4cc0caefdd4e4802c53da2469d67cfca54df2cb0683cc595194ded62df7ef64e74c595618fa84d84f90155325b6675d62bf01",
+        "signature_public_identifier": "0xa00819aee508a7471603abe925c8cc6e8d6b8e5374464b4e371a320ffac26f67"
+      }
+    }
+  },
+  "file_index": {
+    "0x16207939d5ecb15be3161f6f5aef0c9d0cdd6c893753c5573b27bfcc67856ca323cd": "anchor_0x162079",
+    "0x16208e7a2bd2fcacd251b8b2e9acb3ca444116c17d5d68077f380d520d9375dbd06d": "object_0x16208e"
+  }
+}

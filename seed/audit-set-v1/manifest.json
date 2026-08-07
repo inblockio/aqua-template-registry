@@ -1,0 +1,143 @@
+{
+  "set": "audit-set-v1",
+  "vendor": "inblockio",
+  "publisher_did": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+  "registration_count": 12,
+  "source": {
+    "repo": "aqua-rs-sdk-core",
+    "tip": "50121c4",
+    "ledger": "tests/audit_template_hashes.txt",
+    "definitions": "src/schema/templates"
+  },
+  "registrations": [
+    {
+      "seq": 1,
+      "kind": "vendor",
+      "name": "inblockio",
+      "qualified_name": "inblockio",
+      "tree_tip": "0x1620d3c71e474d3715632a16adb3e0e92852d7d000d0d25b8237c39a273906223aa7",
+      "tree_file": "01-vendor-inblockio.json"
+    },
+    {
+      "seq": 2,
+      "kind": "template",
+      "name": "audit_artifact",
+      "qualified_name": "inblockio/audit_artifact",
+      "template_hash": "0x431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3",
+      "display_name": "Audit artifact",
+      "tree_tip": "0x1620215740cc02fb205846a7f7aaef62e8d60cf466303734e5e090984e113fe7da8e",
+      "tree_file": "02-template-audit_artifact.json",
+      "definition_file": "definitions/audit_artifact.json"
+    },
+    {
+      "seq": 3,
+      "kind": "template",
+      "name": "audit_user_turn_marker",
+      "qualified_name": "inblockio/audit_user_turn_marker",
+      "template_hash": "0x9bf38992cb2cc1230edb6539a98e6d3c889c69aa09b1764a4b91b30cb6a36990",
+      "display_name": "User turn marker",
+      "tree_tip": "0x1620fc6b3c0d1df1ceedb58589b7501a894ee7a075145229f6d7f4e45dbff5dc20af",
+      "tree_file": "03-template-audit_user_turn_marker.json",
+      "definition_file": "definitions/audit_user_turn_marker.json"
+    },
+    {
+      "seq": 4,
+      "kind": "template",
+      "name": "audit_user_prompt",
+      "qualified_name": "inblockio/audit_user_prompt",
+      "template_hash": "0x80143d8018fa7a0fa959c115ff7bf7da0d3363192db5202f2904b4626559ecc7",
+      "display_name": "User prompt",
+      "tree_tip": "0x16209a7755d5bd69ffb0d802d5c0131b7fceb822fdf642f3a1087efb26a1c578d5fe",
+      "tree_file": "04-template-audit_user_prompt.json",
+      "definition_file": "definitions/audit_user_prompt.json"
+    },
+    {
+      "seq": 5,
+      "kind": "template",
+      "name": "audit_agent_thinking",
+      "qualified_name": "inblockio/audit_agent_thinking",
+      "template_hash": "0xfe1d5fd50335d5d21f3f1976baadc9eab68a0506241ed5303bb8ad0a25a407f1",
+      "display_name": "Agent reasoning step",
+      "tree_tip": "0x1620e4100a7bf288dd5fd62bcc5b73eba9900b2aca394363986fac1ce440a5b93bb5",
+      "tree_file": "05-template-audit_agent_thinking.json",
+      "definition_file": "definitions/audit_agent_thinking.json"
+    },
+    {
+      "seq": 6,
+      "kind": "template",
+      "name": "audit_agent_tool_call",
+      "qualified_name": "inblockio/audit_agent_tool_call",
+      "template_hash": "0x13d08a7ea2a0dc5f4d5a380d9dd9456ec10392bc752f152517dd227bb272592f",
+      "display_name": "Agent tool call",
+      "tree_tip": "0x1620cf2b9be046f21df4d82cd915dd6cbdeb06a1cfb0d21d11f9444a66f60502c722",
+      "tree_file": "06-template-audit_agent_tool_call.json",
+      "definition_file": "definitions/audit_agent_tool_call.json"
+    },
+    {
+      "seq": 7,
+      "kind": "template",
+      "name": "audit_api_response",
+      "qualified_name": "inblockio/audit_api_response",
+      "template_hash": "0x6d1e300bbb0145cedc1a2ff19fd1ad0e0dcfcfde6a4a9b0d6ea67c7d31c4a129",
+      "display_name": "Attested API response",
+      "tree_tip": "0x1620b09b0661701b3af80089098ad238ac40e2a95d567523183b059c38db0b32e684",
+      "tree_file": "07-template-audit_api_response.json",
+      "definition_file": "definitions/audit_api_response.json"
+    },
+    {
+      "seq": 8,
+      "kind": "template",
+      "name": "audit_tool_result",
+      "qualified_name": "inblockio/audit_tool_result",
+      "template_hash": "0xad46f51cfce3fd961acb2a3d9047b4c217c3da43c32addc41e8e11b84b5c4732",
+      "display_name": "Tool result",
+      "tree_tip": "0x1620445580a72bcc36986106b5d42bf50a2a253a445bd1a4d214341c49b743040a47",
+      "tree_file": "08-template-audit_tool_result.json",
+      "definition_file": "definitions/audit_tool_result.json"
+    },
+    {
+      "seq": 9,
+      "kind": "template",
+      "name": "audit_hitl_approval",
+      "qualified_name": "inblockio/audit_hitl_approval",
+      "template_hash": "0xcd588f6994409f3088eef84d231027ba69a1d9d7193fcb1bf0d07a1716ba6560",
+      "display_name": "Human approval decision",
+      "tree_tip": "0x1620c321f7d0a82359cbc5bc502b22efd786c5780565e9952b30f8fe722c031f320b",
+      "tree_file": "09-template-audit_hitl_approval.json",
+      "definition_file": "definitions/audit_hitl_approval.json"
+    },
+    {
+      "seq": 10,
+      "kind": "template",
+      "name": "audit_agent_response",
+      "qualified_name": "inblockio/audit_agent_response",
+      "template_hash": "0xe36f3af11b2c6d5c94e2862e4a66db016ff8e8f5486fe72594daa7df480c5413",
+      "display_name": "Agent response",
+      "tree_tip": "0x162034f60cf5c0bde006d4ed87dc32a6cb5ce92e5be2fc27bd781744aeab8c1cd548",
+      "tree_file": "10-template-audit_agent_response.json",
+      "definition_file": "definitions/audit_agent_response.json"
+    },
+    {
+      "seq": 11,
+      "kind": "template",
+      "name": "audit_round_anchor",
+      "qualified_name": "inblockio/audit_round_anchor",
+      "template_hash": "0xf174f2f669d102d3d74efb80248a08485fe2c40d18b2df5ccc7d225e794b63e7",
+      "display_name": "Turn round anchor",
+      "tree_tip": "0x16206845aba15a69dfedae3c67761acdeaead37375d350c403e4b6c5a79987067588",
+      "tree_file": "11-template-audit_round_anchor.json",
+      "definition_file": "definitions/audit_round_anchor.json"
+    },
+    {
+      "seq": 12,
+      "kind": "template",
+      "name": "audit_session_close",
+      "qualified_name": "inblockio/audit_session_close",
+      "template_hash": "0x9069525103b9408f039a41454d25ed5ffc59aed9e46224cb19864f2e71e0c23b",
+      "display_name": "Session close",
+      "tree_tip": "0x1620621b36a11f63d06883c7674483839e1e01b7e167a56fa25796c4dcc3fb99b818",
+      "tree_file": "12-template-audit_session_close.json",
+      "definition_file": "definitions/audit_session_close.json"
+    }
+  ]
+}

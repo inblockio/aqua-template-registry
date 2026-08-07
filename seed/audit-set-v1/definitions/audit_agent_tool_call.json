@@ -1,0 +1,59 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0x00000000000000000000000000000000",
+  "local_timestamp": 1747526400,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "signer_did": {
+        "type": "string",
+        "pattern": "^did:(pkh|key):",
+        "maxLength": 256
+      },
+      "turn_id": {
+        "type": "string",
+        "pattern": "^0x(16|1e)20[0-9a-f]{64}$"
+      },
+      "seq_in_turn": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "tool_name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "description": "MCP tool name (e.g. 'inventory.item.create')"
+      },
+      "tool_args": {
+        "description": "Opaque tool arguments (any JSON)"
+      },
+      "risk_level": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "description": "Risk classification (free-form: recommended values low|medium|high|hitl-required)"
+      },
+      "created_at": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "signer_did",
+      "turn_id",
+      "seq_in_turn",
+      "tool_name",
+      "tool_args",
+      "risk_level",
+      "created_at"
+    ],
+    "additionalProperties": false
+  },
+  "derives_from": "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3",
+  "ancestry": [
+    "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3"
+  ]
+}

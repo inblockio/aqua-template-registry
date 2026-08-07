@@ -1,0 +1,47 @@
+{
+  "revisions": {
+    "0x16200efbd66277bee522303444c987e5ed683d8333b8d392e65af922e47331a07565": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0xfcbef5718af3778bef84ade255171bac",
+      "local_timestamp": 1786094606,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197"
+      ]
+    },
+    "0x162034f60cf5c0bde006d4ed87dc32a6cb5ce92e5be2fc27bd781744aeab8c1cd548": {
+      "previous_revision": "0x1620cb94753dfc18873737e68d4c34663449d148133f44fc1edf2379690c070cf1e4",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0x4d3e9e09c8a131365204022307104e14",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0xe7a131f7e3819ffd833981d5a39636432995eb063a1792c62dae56ee1b1e61f220bbbb05d2623d930769507d09d2e17462fa2eeb8152d48c7609d791737a2604",
+        "signature_public_identifier": "0xa00819aee508a7471603abe925c8cc6e8d6b8e5374464b4e371a320ffac26f67"
+      }
+    },
+    "0x1620cb94753dfc18873737e68d4c34663449d148133f44fc1edf2379690c070cf1e4": {
+      "previous_revision": "0x16200efbd66277bee522303444c987e5ed683d8333b8d392e65af922e47331a07565",
+      "revision_type": "0x1620a02b06af0daa6ecf19ca9495118a46af255a898445f71dd167900350a2f39197",
+      "nonce": "0xc506e0869dd81c22d5ca7978c6127420",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "vendor": "inblockio",
+        "name": "audit_agent_response",
+        "template_hash": "0xe36f3af11b2c6d5c94e2862e4a66db016ff8e8f5486fe72594daa7df480c5413",
+        "display_name": "Agent response",
+        "description": "A response the agent returned to the user within a turn, flagged as final or intermediate."
+      }
+    }
+  },
+  "file_index": {
+    "0x16200efbd66277bee522303444c987e5ed683d8333b8d392e65af922e47331a07565": "anchor_0x16200e",
+    "0x1620cb94753dfc18873737e68d4c34663449d148133f44fc1edf2379690c070cf1e4": "object_0x1620cb"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0x00000000000000000000000000000000",
+  "local_timestamp": 1747526400,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "signer_did": {
+        "type": "string",
+        "pattern": "^did:(pkh|key):",
+        "maxLength": 256,
+        "description": "The DID of the entity signing the artifact (server, user-session, agent, or API attestor)"
+      },
+      "created_at": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Unix-seconds timestamp of artifact creation. T1 (audit_user_turn_marker) overrides this with opens_at."
+      }
+    },
+    "required": [
+      "signer_did",
+      "created_at"
+    ],
+    "additionalProperties": false
+  },
+  "bounds": {
+    "max_chain_depth": 2,
+    "structural_links": {
+      "required": 0,
+      "max": 4
+    },
+    "max_signature_branches": 6,
+    "max_timestamp_branches": 4,
+    "max_anchor_branches": 4,
+    "max_total_revisions": 16
+  }
+}

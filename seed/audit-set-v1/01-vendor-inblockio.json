@@ -1,0 +1,45 @@
+{
+  "revisions": {
+    "0x162007857f61b07f8dee29a0ee6c8520d143e44643cdb24798f7a8df3639c61b60e1": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0xedc6c8a0b476d1c8fd3cadde4e3130bf",
+      "local_timestamp": 1786094606,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x1620fe0db62677dad4b648e6ef2f4a96c64c98212765341be8e815388915f2c15b21"
+      ]
+    },
+    "0x16208f6c4431d2ed3b304b2aaabfe330a27fc69c235290fe87a9bea41754affbfddd": {
+      "previous_revision": "0x162007857f61b07f8dee29a0ee6c8520d143e44643cdb24798f7a8df3639c61b60e1",
+      "revision_type": "0x1620fe0db62677dad4b648e6ef2f4a96c64c98212765341be8e815388915f2c15b21",
+      "nonce": "0x76acb3df56bda2e820a830c87672616b",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "vendor_name": "inblockio",
+        "display_name": "inblock.io assets GmbH",
+        "vendor_did": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN"
+      }
+    },
+    "0x1620d3c71e474d3715632a16adb3e0e92852d7d000d0d25b8237c39a273906223aa7": {
+      "previous_revision": "0x16208f6c4431d2ed3b304b2aaabfe330a27fc69c235290fe87a9bea41754affbfddd",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0xdc5ac1bf827ce92b44b95795ca1685e9",
+      "local_timestamp": 1786094607,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0xee75d5841b5c00b82ea068c1028dcb9229decf09514c5c473b03a062ebb2154157d4eba88c7271c5dd18d3d0fe0b828cdc041c3d842e822cd277c53df3771603",
+        "signature_public_identifier": "0xa00819aee508a7471603abe925c8cc6e8d6b8e5374464b4e371a320ffac26f67"
+      }
+    }
+  },
+  "file_index": {
+    "0x162007857f61b07f8dee29a0ee6c8520d143e44643cdb24798f7a8df3639c61b60e1": "anchor_0x162007",
+    "0x16208f6c4431d2ed3b304b2aaabfe330a27fc69c235290fe87a9bea41754affbfddd": "object_0x16208f"
+  }
+}
