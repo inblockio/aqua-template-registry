@@ -112,6 +112,16 @@ impl RegistryDaemon {
     pub fn restart(&mut self) {
         let status = self.stop();
         assert!(status.success(), "registryd exited with {status}");
+        self.start_again();
+    }
+
+    /// Start again after an explicit `stop()`, against the same data directory.
+    ///
+    /// Separate from `restart` so a test can modify the data directory while
+    /// the daemon is down, which is how a misbehaving registry is staged: the
+    /// daemon stays honest, its data does not.
+    pub fn start_again(&mut self) {
+        assert!(self.child.is_none(), "daemon is still running");
         let (child, base_url) = spawn_child(&self.data_dir, &self.addr_file);
         self.child = Some(child);
         self.base_url = base_url;
