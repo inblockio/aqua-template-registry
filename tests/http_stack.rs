@@ -70,7 +70,10 @@ fn assert_error_code(body: &str, expected: &str, what: &str) {
     let code = value["error"]["code"]
         .as_str()
         .unwrap_or_else(|| panic!("{what}: error body has no error.code field, body was: {body}"));
-    assert_eq!(code, expected, "{what}: registry returned the wrong stable error code");
+    assert_eq!(
+        code, expected,
+        "{what}: registry returned the wrong stable error code"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -81,11 +84,15 @@ fn assert_error_code(body: &str, expected: &str, what: &str) {
 async fn publish_the_whole_set_over_http_and_read_it_back() {
     let dir = common::TempDir::new("http-stack-a");
     let daemon = common::RegistryDaemon::start(dir.path());
-    let client = RegistryClient::new(daemon.base_url()).expect("base_url is always http://host:port");
+    let client =
+        RegistryClient::new(daemon.base_url()).expect("base_url is always http://host:port");
 
     // 1. A freshly spawned registryd must answer /health before anything else
     // is attempted, otherwise every assertion below would just be timing out.
-    assert!(client.healthy().await, "freshly spawned registryd did not answer /health");
+    assert!(
+        client.healthy().await,
+        "freshly spawned registryd did not answer /health"
+    );
 
     // 2. Publish the whole audit set through the HTTP API. This posts every
     // registration to /vendors or /templates and every body to /definitions,
@@ -96,14 +103,23 @@ async fn publish_the_whole_set_over_http_and_read_it_back() {
     let manifest = common::seed_manifest();
     assert_eq!(
         did,
-        manifest["publisher_did"].as_str().expect("manifest has publisher_did"),
+        manifest["publisher_did"]
+            .as_str()
+            .expect("manifest has publisher_did"),
         "publish_seed_over_http must hand back the manifest's own publisher DID"
     );
 
     // 3. GET /vendors lists exactly one vendor, inblockio, owned by that DID.
     let vendors: Vec<VendorRecord> = client.get_json("/vendors").await.expect("GET /vendors");
-    assert_eq!(vendors.len(), 1, "the seed set claims exactly one vendor namespace");
-    assert_eq!(vendors[0].vendor, "inblockio", "the seed's vendor namespace is inblockio");
+    assert_eq!(
+        vendors.len(),
+        1,
+        "the seed set claims exactly one vendor namespace"
+    );
+    assert_eq!(
+        vendors[0].vendor, "inblockio",
+        "the seed's vendor namespace is inblockio"
+    );
     assert_eq!(
         vendors[0].vendor_did, did,
         "the vendor namespace must be owned by the manifest's publisher DID"
@@ -122,7 +138,11 @@ async fn publish_the_whole_set_over_http_and_read_it_back() {
     // Drive everything below from the manifest, never from a hardcoded list
     // of the eleven template names.
     let manifest_templates = template_entries(&manifest);
-    assert_eq!(manifest_templates.len(), 11, "the audit set registers eleven templates");
+    assert_eq!(
+        manifest_templates.len(),
+        11,
+        "the audit set registers eleven templates"
+    );
 
     for entry in &manifest_templates {
         let name = entry["name"].as_str().expect("name");
@@ -208,10 +228,19 @@ async fn publish_the_whole_set_over_http_and_read_it_back() {
     // 8. GET /stats shows the whole set: one vendor, eleven templates, one
     // publisher, head_seq 12 (one vendor claim plus eleven template claims).
     let stats: Stats = client.get_json("/stats").await.expect("GET /stats");
-    assert_eq!(stats.head_seq, 12, "one vendor registration plus eleven template registrations");
+    assert_eq!(
+        stats.head_seq, 12,
+        "one vendor registration plus eleven template registrations"
+    );
     assert_eq!(stats.vendors, 1, "exactly one vendor namespace was claimed");
-    assert_eq!(stats.templates, 11, "exactly eleven templates were registered");
-    assert_eq!(stats.publishers, 1, "the whole set has a single publisher DID");
+    assert_eq!(
+        stats.templates, 11,
+        "exactly eleven templates were registered"
+    );
+    assert_eq!(
+        stats.publishers, 1,
+        "the whole set has a single publisher DID"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -222,8 +251,12 @@ async fn publish_the_whole_set_over_http_and_read_it_back() {
 async fn feed_paging_walks_the_whole_publisher_history() {
     let dir = common::TempDir::new("http-stack-b");
     let daemon = common::RegistryDaemon::start(dir.path());
-    let client = RegistryClient::new(daemon.base_url()).expect("base_url is always http://host:port");
-    assert!(client.healthy().await, "freshly spawned registryd did not answer /health");
+    let client =
+        RegistryClient::new(daemon.base_url()).expect("base_url is always http://host:port");
+    assert!(
+        client.healthy().await,
+        "freshly spawned registryd did not answer /health"
+    );
 
     let did = common::publish_seed_over_http(&client).await;
     let manifest = common::seed_manifest();
@@ -244,22 +277,37 @@ async fn feed_paging_walks_the_whole_publisher_history() {
         pages_fetched += 1;
         // A guard, not a spec requirement: if has_more never went false this
         // would otherwise spin forever instead of failing with a clear cause.
-        assert!(pages_fetched < 20, "feed paging did not converge after {pages_fetched} pages");
+        assert!(
+            pages_fetched < 20,
+            "feed paging did not converge after {pages_fetched} pages"
+        );
         if !page.has_more {
             break;
         }
     }
 
     // Exactly 12 entries collected: one vendor claim plus eleven templates.
-    assert_eq!(collected.len(), 12, "paging must yield all twelve feed entries, no more, no fewer");
+    assert_eq!(
+        collected.len(),
+        12,
+        "paging must yield all twelve feed entries, no more, no fewer"
+    );
 
     // seq values are exactly 1..=12 in ascending order: no gap, duplicate, or
     // reorder introduced by paging across three requests.
     let seqs: Vec<u64> = collected.iter().map(|e| e.seq).collect();
-    assert_eq!(seqs, (1..=12).collect::<Vec<u64>>(), "the paged feed must reassemble into 1..=12 in order");
+    assert_eq!(
+        seqs,
+        (1..=12).collect::<Vec<u64>>(),
+        "the paged feed must reassemble into 1..=12 in order"
+    );
 
     // Entry 1 is the vendor claim.
-    assert_eq!(collected[0].kind, RegistrationKind::Vendor, "the first feed entry must be the vendor claim");
+    assert_eq!(
+        collected[0].kind,
+        RegistrationKind::Vendor,
+        "the first feed entry must be the vendor claim"
+    );
     assert_eq!(
         collected[0].qualified_name, "inblockio",
         "the vendor claim's qualified name is the bare vendor name"
@@ -270,7 +318,11 @@ async fn feed_paging_walks_the_whole_publisher_history() {
     for (i, entry) in manifest_templates.iter().enumerate() {
         let name = entry["name"].as_str().expect("name");
         let feed_entry = &collected[i + 1];
-        assert_eq!(feed_entry.kind, RegistrationKind::Template, "{name}'s feed entry must be kind template");
+        assert_eq!(
+            feed_entry.kind,
+            RegistrationKind::Template,
+            "{name}'s feed entry must be kind template"
+        );
         assert_eq!(
             feed_entry.qualified_name,
             format!("inblockio/{name}"),
@@ -283,9 +335,18 @@ async fn feed_paging_walks_the_whole_publisher_history() {
         .get_json(&format!("/publishers/{did}/feed?since=12"))
         .await
         .expect("GET feed at the head");
-    assert!(head_page.entries.is_empty(), "a caught-up consumer must see zero new entries");
-    assert_eq!(head_page.next, 12, "a caught-up consumer's cursor must not rewind");
-    assert!(!head_page.has_more, "there is nothing more to fetch after seq 12");
+    assert!(
+        head_page.entries.is_empty(),
+        "a caught-up consumer must see zero new entries"
+    );
+    assert_eq!(
+        head_page.next, 12,
+        "a caught-up consumer's cursor must not rewind"
+    );
+    assert!(
+        !head_page.has_more,
+        "there is nothing more to fetch after seq 12"
+    );
 
     // An unknown DID returns an empty feed with 200, not an error.
     let unknown_response = client
@@ -298,7 +359,10 @@ async fn feed_paging_walks_the_whole_publisher_history() {
     );
     let unknown_page: FeedPage = serde_json::from_str(&unknown_response.body)
         .expect("the unknown-DID feed response must still be a valid FeedPage");
-    assert!(unknown_page.entries.is_empty(), "an unknown DID has no history for the feed to return");
+    assert!(
+        unknown_page.entries.is_empty(),
+        "an unknown DID has no history for the feed to return"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -309,29 +373,50 @@ async fn feed_paging_walks_the_whole_publisher_history() {
 async fn restart_preserves_state_and_shuts_down_cleanly() {
     let dir = common::TempDir::new("http-stack-c");
     let mut daemon = common::RegistryDaemon::start(dir.path());
-    let client = RegistryClient::new(daemon.base_url()).expect("base_url is always http://host:port");
-    assert!(client.healthy().await, "freshly spawned registryd did not answer /health");
+    let client =
+        RegistryClient::new(daemon.base_url()).expect("base_url is always http://host:port");
+    assert!(
+        client.healthy().await,
+        "freshly spawned registryd did not answer /health"
+    );
 
     let did = common::publish_seed_over_http(&client).await;
 
-    let stats_before: Stats = client.get_json("/stats").await.expect("GET /stats before restart");
+    let stats_before: Stats = client
+        .get_json("/stats")
+        .await
+        .expect("GET /stats before restart");
     let feed_before: FeedPage = client
         .get_json(&format!("/publishers/{did}/feed?since=0&limit=100"))
         .await
         .expect("GET feed before restart");
-    assert_eq!(feed_before.entries.len(), 12, "the full feed must be twelve entries before restart");
+    assert_eq!(
+        feed_before.entries.len(),
+        12,
+        "the full feed must be twelve entries before restart"
+    );
 
     // The port changes on restart, by design (see tests/common/mod.rs). A
     // client built from the new base_url is required to prove the following
     // calls are actually reaching the new process, not a lingering old one.
     daemon.restart();
-    let client = RegistryClient::new(daemon.base_url()).expect("base_url is always http://host:port");
-    assert!(client.healthy().await, "the restarted daemon did not answer /health");
+    let client =
+        RegistryClient::new(daemon.base_url()).expect("base_url is always http://host:port");
+    assert!(
+        client.healthy().await,
+        "the restarted daemon did not answer /health"
+    );
 
     // Stats are rebuilt from the persisted feed on startup, so they must come
     // back identical.
-    let stats_after: Stats = client.get_json("/stats").await.expect("GET /stats after restart");
-    assert_eq!(stats_after, stats_before, "stats must be identical after a restart, the feed is durable");
+    let stats_after: Stats = client
+        .get_json("/stats")
+        .await
+        .expect("GET /stats after restart");
+    assert_eq!(
+        stats_after, stats_before,
+        "stats must be identical after a restart, the feed is durable"
+    );
 
     // A consumer cursor parked at seq 9 must resume at exactly entries 10,
     // 11, 12 after the restart, proving the sequence numbers themselves
@@ -340,9 +425,17 @@ async fn restart_preserves_state_and_shuts_down_cleanly() {
         .get_json(&format!("/publishers/{did}/feed?since=9"))
         .await
         .expect("GET feed tail after restart");
-    assert_eq!(tail.entries.len(), 3, "a cursor at seq 9 must still see exactly the last three entries");
+    assert_eq!(
+        tail.entries.len(),
+        3,
+        "a cursor at seq 9 must still see exactly the last three entries"
+    );
     let tail_seqs: Vec<u64> = tail.entries.iter().map(|e| e.seq).collect();
-    assert_eq!(tail_seqs, vec![10, 11, 12], "the surviving cursor must resume at exactly entries 10, 11, 12");
+    assert_eq!(
+        tail_seqs,
+        vec![10, 11, 12],
+        "the surviving cursor must resume at exactly entries 10, 11, 12"
+    );
 
     // Name resolution survives the restart with the same answer.
     let resolution: Resolution = client
@@ -367,11 +460,17 @@ async fn restart_preserves_state_and_shuts_down_cleanly() {
         .get_raw(&format!("/definitions/{expected_hash}"))
         .await
         .expect("GET /definitions after restart must still serve the body");
-    assert!(!served_def.is_empty(), "the served definition body must not be empty after restart");
+    assert!(
+        !served_def.is_empty(),
+        "the served definition body must not be empty after restart"
+    );
 
     // Clean shutdown: the process must exit 0 on SIGTERM, not require a kill.
     let status = daemon.stop();
-    assert!(status.success(), "registryd must exit cleanly on SIGTERM, a killed daemon is a shutdown bug");
+    assert!(
+        status.success(),
+        "registryd must exit cleanly on SIGTERM, a killed daemon is a shutdown bug"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -382,8 +481,12 @@ async fn restart_preserves_state_and_shuts_down_cleanly() {
 async fn http_error_responses_carry_the_right_status_and_code() {
     let dir = common::TempDir::new("http-stack-d");
     let daemon = common::RegistryDaemon::start(dir.path());
-    let client = RegistryClient::new(daemon.base_url()).expect("base_url is always http://host:port");
-    assert!(client.healthy().await, "freshly spawned registryd did not answer /health");
+    let client =
+        RegistryClient::new(daemon.base_url()).expect("base_url is always http://host:port");
+    assert!(
+        client.healthy().await,
+        "freshly spawned registryd did not answer /health"
+    );
 
     common::publish_seed_over_http(&client).await;
     let manifest = common::seed_manifest();
@@ -402,14 +505,21 @@ async fn http_error_responses_carry_the_right_status_and_code() {
         response.status, 409,
         "registering the same template hash a second time must be rejected as a conflict"
     );
-    assert_error_code(&response.body, "DUPLICATE_TEMPLATE", "duplicate template registration");
+    assert_error_code(
+        &response.body,
+        "DUPLICATE_TEMPLATE",
+        "duplicate template registration",
+    );
 
     // ---- GET /vendors/nope: 404 NOT_FOUND
     let response = client
         .get("/vendors/nope")
         .await
         .expect("GET /vendors/nope must reach the server");
-    assert_eq!(response.status, 404, "an unregistered vendor namespace must 404");
+    assert_eq!(
+        response.status, 404,
+        "an unregistered vendor namespace must 404"
+    );
     assert_error_code(&response.body, "NOT_FOUND", "unknown vendor lookup");
 
     // ---- GET /definitions/0x + 64 zeros: 404, nothing is stored under it
@@ -418,8 +528,15 @@ async fn http_error_responses_carry_the_right_status_and_code() {
         .get(&format!("/definitions/{zero_hash}"))
         .await
         .expect("GET /definitions/{zero_hash} must reach the server");
-    assert_eq!(response.status, 404, "a hash nobody ever stored a definition under must 404");
-    assert_error_code(&response.body, "NOT_FOUND", "unstored definition hash lookup");
+    assert_eq!(
+        response.status, 404,
+        "a hash nobody ever stored a definition under must 404"
+    );
+    assert_error_code(
+        &response.body,
+        "NOT_FOUND",
+        "unstored definition hash lookup",
+    );
 
     // ---- POST /definitions with valid JSON that is not a template: 400
     let response = client
@@ -436,9 +553,13 @@ async fn http_error_responses_carry_the_right_status_and_code() {
     // Take a seed definition, flip its nonce to a different 32-hex-char
     // value, and re-serialize. That changes the hash (the nonce is part of
     // what gets hashed) while keeping the body a well-formed template.
-    let def_file = first_entry["definition_file"].as_str().expect("definition_file");
-    let seed_def = std::fs::read_to_string(common::seed_dir().join(def_file)).expect("read seed definition");
-    let mut value: serde_json::Value = serde_json::from_str(&seed_def).expect("seed definition parses as JSON");
+    let def_file = first_entry["definition_file"]
+        .as_str()
+        .expect("definition_file");
+    let seed_def =
+        std::fs::read_to_string(common::seed_dir().join(def_file)).expect("read seed definition");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&seed_def).expect("seed definition parses as JSON");
 
     let original_nonce = value["nonce"]
         .as_str()
@@ -450,7 +571,10 @@ async fn http_error_responses_carry_the_right_status_and_code() {
     } else {
         all_zero_nonce
     };
-    assert_ne!(different_nonce, original_nonce, "the whole point of this fixture is a nonce that differs");
+    assert_ne!(
+        different_nonce, original_nonce,
+        "the whole point of this fixture is a nonce that differs"
+    );
     value["nonce"] = serde_json::Value::String(different_nonce);
     let mutated_def = serde_json::to_string(&value).expect("re-serialize the mutated definition");
 
@@ -462,5 +586,9 @@ async fn http_error_responses_carry_the_right_status_and_code() {
         response.status, 404,
         "a well-formed template definition whose hash nobody registered must 404"
     );
-    assert_error_code(&response.body, "DEFINITION_NOT_REGISTERED", "unregistered definition hash upload");
+    assert_error_code(
+        &response.body,
+        "DEFINITION_NOT_REGISTERED",
+        "unregistered definition hash upload",
+    );
 }
