@@ -603,6 +603,49 @@ Definition bodies and tree blobs are content addressed and are therefore never v
 
 Plain files were chosen over an embedded database such as sled or a SQL engine because the durable state here is a small append-only log: no query planner is needed, no concurrent-writer story is needed, no schema migration story is needed. A directory of readable JSON is operator-inspectable (`cat`, `grep`, `ls`), trivially backed up (`cp -r`, `rsync`, `tar`), and adds zero extra dependencies.
 
+## Docker
+
+`docker/build.sh` builds a minimal image for `registryd` (~7 MB: a
+multi-stage build ending in `scratch` with one statically linked musl
+binary and a `/data` mount point — no shell, no libc):
+
+```bash
+docker/build.sh          # needs ../aqua-rs-sdk-core checked out (AQUA_CORE_DIR to override)
+```
+
+The script stages the **committed** content of this repo and the public
+`aqua-rs-sdk-core` sibling (`git archive HEAD`), strips the
+`[dev-dependencies]` section from the staged manifest — the same trimming
+`cargo publish` performs, which is what lets the image build without the
+private `aqua-rs-sdk` cross-SDK dev-dependency — and builds
+`docker/Dockerfile` against that context. Podman works via `DOCKER=podman`
+(the script only needs `build`).
+
+Run it:
+
+```bash
+docker run -d --name aqua-registry \
+  -p 127.0.0.1:8088:8088 \
+  -v aqua-registry-data:/data \
+  aqua-template-registry:latest
+```
+
+The image bakes `REGISTRY_DATA_DIR=/data` and `REGISTRY_BIND=0.0.0.0:8088`
+and runs as UID 65532. There is no in-image health check (`scratch` has no
+client to probe with): poll `GET /health` from the orchestrator or reverse
+proxy. `docker stop` is a clean shutdown (`registryd` handles SIGTERM). The
+store is created empty on first start; load the audit set by replaying
+`seed/audit-set-v1` against the running container (see "Replaying the seed
+set").
+
+Behind Caddy, the whole vhost is:
+
+```caddyfile
+aqua-registry.example.org {
+    reverse_proxy 127.0.0.1:8088
+}
+```
+
 ## Testing
 
 ```bash
