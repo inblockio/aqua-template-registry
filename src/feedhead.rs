@@ -267,6 +267,30 @@ pub enum HeadRejection {
         previous: u64,
     },
 
+    /// The head is older than the consumer's freshness policy allows.
+    #[error(
+        "feed head is {age_secs}s old (covered_at {covered_at}), over the {max_age_secs}s limit"
+    )]
+    Stale {
+        /// The signed timestamp.
+        covered_at: u64,
+        /// How old it is now.
+        age_secs: u64,
+        /// The configured limit.
+        max_age_secs: u64,
+    },
+
+    /// The head is timestamped implausibly far in the future.
+    #[error("feed head is dated {covered_at}, more than {tolerance_secs}s ahead of now ({now})")]
+    FromTheFuture {
+        /// The signed timestamp.
+        covered_at: u64,
+        /// The verifier's clock.
+        now: u64,
+        /// The allowed skew.
+        tolerance_secs: u64,
+    },
+
     /// Two heads at the same height disagree.
     #[error("two heads at height {head_seq} disagree: {a} and {b}")]
     ForkedHead {
@@ -294,6 +318,8 @@ impl HeadRejection {
             HeadRejection::Withholding { .. } => "HEAD_WITHHOLDING",
             HeadRejection::Rollback { .. } => "HEAD_ROLLBACK",
             HeadRejection::Disappeared { .. } => "HEAD_DISAPPEARED",
+            HeadRejection::Stale { .. } => "HEAD_STALE",
+            HeadRejection::FromTheFuture { .. } => "HEAD_FROM_THE_FUTURE",
             HeadRejection::ForkedHead { .. } => "HEAD_FORKED",
         }
     }
@@ -459,6 +485,73 @@ pub fn check_against_entries(
             covered: head.head_seq,
             signed: head.merkle_root.clone(),
             recomputed,
+        });
+    }
+    Ok(())
+}
+
+/// Check a head against a freshness policy.
+///
+/// # Which timestamp this trusts, and why
+///
+/// It uses `covered_at`, the field inside the head's OBJECT payload.
+///
+/// `covered_at` is covered by the signature: the signature commits to the
+/// object revision's hash, and that hash is computed over the payload, so
+/// moving `covered_at` by one second invalidates the whole tree.
+/// `tests/head_freshness.rs::a_tampered_covered_at_breaks_the_tree` asserts it.
+///
+/// A head tree also carries a `local_timestamp` on its signature revision, and
+/// the first draft of this module assumed that field was malleable, on the
+/// reasoning that the signature revision is the tree's tip and nothing commits
+/// to it. That reasoning is wrong.
+/// `tests/head_freshness.rs::the_signature_revisions_own_timestamp_is_not_a_trustworthy_clock`
+/// rewrites that field, rekeys the revision to its new hash (which is what an
+/// intermediary would do), and core still refuses the tree: the signature is
+/// computed over a pre-signature structure that includes the revision's own
+/// timestamp, so it is bound after all. Either field would therefore have been
+/// safe from tampering.
+///
+/// `covered_at` is still the right one, for a reason that is about meaning
+/// rather than integrity. It is a payload field the publisher sets to say when
+/// they made the commitment, which is the question a freshness policy is
+/// asking. The signature revision's timestamp records when that revision was
+/// constructed, which is an artefact of how the tree was built and could change
+/// if signing ever became a two-step or offline process. Reading the field that
+/// means what the policy needs keeps the policy correct under changes to the
+/// other one.
+///
+/// A `None` policy means no freshness requirement, which is what every policy
+/// file written before this setting existed means and keeps meaning.
+///
+/// Heads dated more than [`crate::trust::FUTURE_HEAD_TOLERANCE_SECS`] ahead of
+/// `now` are refused whether or not a max age is set. A future-dated head can
+/// never be stale, so without this the policy would be defeated by a clock.
+pub fn check_freshness(
+    head: &VerifiedHead,
+    max_age_secs: Option<u64>,
+    now: u64,
+) -> std::result::Result<(), HeadRejection> {
+    if head.covered_at > now.saturating_add(crate::trust::FUTURE_HEAD_TOLERANCE_SECS) {
+        return Err(HeadRejection::FromTheFuture {
+            covered_at: head.covered_at,
+            now,
+            tolerance_secs: crate::trust::FUTURE_HEAD_TOLERANCE_SECS,
+        });
+    }
+
+    let Some(max_age_secs) = max_age_secs else {
+        return Ok(());
+    };
+
+    // saturating_sub, so a head from the near future (within tolerance) reads
+    // as age zero rather than wrapping to a huge number.
+    let age_secs = now.saturating_sub(head.covered_at);
+    if age_secs > max_age_secs {
+        return Err(HeadRejection::Stale {
+            covered_at: head.covered_at,
+            age_secs,
+            max_age_secs,
         });
     }
     Ok(())
@@ -631,6 +724,69 @@ mod tests {
         let err = check_against_entries(&head, &swapped).unwrap_err();
         assert!(matches!(err, HeadRejection::RootMismatch { .. }));
         assert_eq!(err.code(), "HEAD_ROOT_MISMATCH");
+    }
+
+    fn head_at(covered_at: u64) -> VerifiedHead {
+        VerifiedHead {
+            publisher_did: "did:key:z6Mk".into(),
+            head_seq: 1,
+            merkle_root: "0xaa".into(),
+            leaf_version: LEAF_VERSION,
+            covered_at,
+            tree_tip: "0x00".into(),
+        }
+    }
+
+    #[test]
+    fn freshness_is_off_unless_a_policy_asks_for_it() {
+        // A policy file that predates this setting must keep behaving as it
+        // always did, so None means no requirement rather than some default.
+        let ancient = head_at(0);
+        assert!(check_freshness(&ancient, None, 1_000_000_000).is_ok());
+    }
+
+    #[test]
+    fn a_head_older_than_the_policy_is_stale() {
+        let now = 1_000_000;
+        assert!(check_freshness(&head_at(now - 100), Some(3600), now).is_ok());
+        assert!(check_freshness(&head_at(now - 3600), Some(3600), now).is_ok());
+
+        let err = check_freshness(&head_at(now - 3601), Some(3600), now).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                HeadRejection::Stale {
+                    age_secs: 3601,
+                    max_age_secs: 3600,
+                    ..
+                }
+            ),
+            "got {err:?}"
+        );
+        assert_eq!(err.code(), "HEAD_STALE");
+    }
+
+    #[test]
+    fn a_future_dated_head_is_refused_beyond_the_skew_tolerance() {
+        // A head dated in the future can never be stale, so without this check
+        // a single bad timestamp would defeat the whole policy.
+        let now = 1_000_000;
+        let tol = crate::trust::FUTURE_HEAD_TOLERANCE_SECS;
+
+        // Inside the tolerance, a fast clock is forgiven.
+        assert!(check_freshness(&head_at(now + tol), Some(3600), now).is_ok());
+        // And it does not wrap into a huge age.
+        assert!(check_freshness(&head_at(now + tol), Some(0), now).is_ok());
+
+        let err = check_freshness(&head_at(now + tol + 1), Some(3600), now).unwrap_err();
+        assert!(
+            matches!(err, HeadRejection::FromTheFuture { .. }),
+            "got {err:?}"
+        );
+        assert_eq!(err.code(), "HEAD_FROM_THE_FUTURE");
+
+        // The future check applies even with no max age configured.
+        assert!(check_freshness(&head_at(now + tol + 1), None, now).is_err());
     }
 
     #[test]

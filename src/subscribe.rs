@@ -466,6 +466,11 @@ impl Subscriber {
             self.state.head_root.as_deref(),
         )?;
 
+        // Freshness, against the head's own signed timestamp. Placed before
+        // the entry comparison so a stale head is reported as stale rather
+        // than as whatever the stale entry set happens to look like.
+        feedhead::check_freshness(&head, self.policy.max_head_age_secs(), now_secs())?;
+
         // Withholding and reordering, against what the registry just served.
         let tips: Vec<String> = all_entries.iter().map(|e| e.tree_tip.clone()).collect();
         feedhead::check_against_entries(&head, &tips)?;
