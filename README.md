@@ -2,6 +2,13 @@
 
 A lightweight service and library where template publishers register Aqua templates under their publisher DID, and consumers subscribe to or fetch templates by publisher DID. Licensed Apache-2.0.
 
+## DISCLAIMER
+This is an experimental, minimal community release of Aqua Protocol v4 registry under the Apache License 2.0.
+It is provided “AS IS”, without warranty of any kind. Use at your own risk.
+The software is under active development and currently receives only limited support and maintenance. Breaking changes are expected and may occur without notice.
+
+A deployed registry can be found (without SLA) under https://aqua-registry.inblock.io and can be used to publish and retrieve community developed templates. Templates might get wiped without notice as this is currently running under active development and experimental conditions.
+
 ## Relationship to aqua-rs-sdk-core
 
 `aqua-rs-sdk-core` is the WASM-free protocol core: revision hashing, Merkle proofs, tree linking, signature verification (Ed25519, EIP-191, P-256, WebAuthn), and template primitives. It deliberately defers template distribution. It knows how to verify a template, and says nothing about how you find one. This project is that missing piece, kept as a separate repository so it can move at community speed without touching the protocol core. It depends on `aqua-rs-sdk-core` for tree parsing, signature verification, and template hashing, and never re-implements any of it.
