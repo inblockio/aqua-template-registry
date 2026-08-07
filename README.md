@@ -228,9 +228,111 @@ Template hashes are immutable: any change to a template produces a new hash. A n
 
 The chain is kept linear: a `supersedes` target must already be a known version of the same qualified name (otherwise `409 UNKNOWN_SUPERSEDES`), and a hash that some other version has already superseded cannot be superseded again (`409 ALREADY_SUPERSEDED`).
 
+## The audit template set v1
+
+The first template set published through this registry. It is the Aqua audit family that `aqua-rs-sdk-core` ships: eleven data-only templates for recording what an agent did during a session, so the record can be verified afterwards by someone who was not there.
+
+The family is flat and re-rooted. `audit_artifact` is the abstract root, carrying the `signer_did` and `created_at` fields common to everything else. The other ten derive from it directly, at depth one:
+
+| Name | Role |
+|---|---|
+| `audit_artifact` | Abstract root, never instantiated directly |
+| `audit_user_turn_marker` | T1, opens a turn |
+| `audit_user_prompt` | T2, the user's prompt |
+| `audit_agent_thinking` | T3, a reasoning step |
+| `audit_agent_tool_call` | T4, a requested tool invocation |
+| `audit_api_response` | T5, an attested external API response |
+| `audit_tool_result` | T6, the outcome of a tool invocation |
+| `audit_hitl_approval` | T7, a human-in-the-loop decision |
+| `audit_agent_response` | T8, a response returned to the user |
+| `audit_round_anchor` | Closes a turn, commits to its Merkle root |
+| `audit_session_close` | Closes a session |
+
+All eleven are data-only: JSON Schema, no WASM, no compute stage. They validate structurally and by signature, and nothing executes.
+
+Namespace and publisher:
+
+```text
+vendor        inblockio
+publisher DID did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN
+source        aqua-rs-sdk-core tip 14aa77d, tests/audit_template_hashes.txt
+```
+
+That DID is the only authority over the `inblockio` namespace. A consumer who trusts it can subscribe to it and take everything it publishes; a consumer who does not can ignore the namespace entirely, which is the whole of the trust model.
+
+### Publishing the set
+
+`publish-audit-set` reads the template definitions and the hash ledger out of a core checkout, recomputes every hash from the definition through core's own `calculate_link`, and aborts if any of them disagrees with the ledger. Only then does it sign anything: registering a hash that does not match the definition being distributed would publish a name pointing at a type nobody can resolve.
+
+```bash
+cargo run --bin publish-audit-set -- \
+    --core ../aqua-rs-sdk-core \
+    --data-dir ./data \
+    --seed-out seed/audit-set-v1
+```
+
+The publisher key lives outside the working tree, at `~/.aqua-registry-publisher/inblockio.key` by default (`--key` to override). It is created with mode 0600 inside a 0700 directory if it does not exist, and the derived DID is printed. It is never written into the seed set and must never be committed: whoever holds it owns the namespace.
+
+### Replaying the seed set
+
+`seed/audit-set-v1/` holds the published set as committed data:
+
+```text
+seed/audit-set-v1/
+  01-vendor-inblockio.json           the signed vendor registration
+  02-template-audit_artifact.json    eleven signed template registrations,
+  ...                                numbered in registration order
+  12-template-audit_session_close.json
+  definitions/*.json                 the eleven template bodies, byte-identical to core
+  manifest.json                      name, hash, DID, tip, and file names
+```
+
+The signed trees are committed rather than regenerated because each one carries a nonce and a timestamp: re-running the publisher produces different bytes with the same meaning. Committing them means the tests and any consumer exercise the exact bytes that were published.
+
+To load the set into a running `registryd`, POST each tree in manifest order (the vendor registration must land first, since the other eleven write into the namespace it claims):
+
+```bash
+cd seed/audit-set-v1
+curl -sS -X POST http://127.0.0.1:8088/vendors \
+     -H 'content-type: application/json' -d @01-vendor-inblockio.json
+for f in [01][0-9]-template-*.json; do
+  curl -sS -X POST http://127.0.0.1:8088/templates \
+       -H 'content-type: application/json' -d @"$f"
+  echo
+done
+```
+
+### Consuming the set
+
+Resolve a name, or list everything the publisher offers:
+
+```bash
+did=did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN
+curl -sS http://127.0.0.1:8088/resolve/inblockio/audit_user_turn_marker
+curl -sS "http://127.0.0.1:8088/publishers/$did/templates"
+curl -sS "http://127.0.0.1:8088/publishers/$did/feed?since=0"
+```
+
+To verify rather than trust, fetch the full signed registration tree for a hash and check it with `aqua-rs-sdk-core`. It comes back byte-identical to what was published, signature intact:
+
+```bash
+curl -sS http://127.0.0.1:8088/templates/0x9bf38992cb2cc1230edb6539a98e6d3c889c69aa09b1764a4b91b30cb6a36990
+```
+
+Two things are worth checking independently, and `tests/audit_set.rs` checks both. First, the registration tree verifies and is signed by the DID you expected. Second, the `template_hash` it registers is the hash you get by running the distributed template definition back through `calculate_link`. The second check is the one that matters: a registration is only a signed claim that a name points at a hash, and it says nothing about whether the definition you were handed is the one that hashes to it.
+
+```bash
+cargo test --test audit_set                # replay and verify the committed seed
+cargo test --test audit_set -- --ignored   # also check the seed against ../aqua-rs-sdk-core
+```
+
+The ignored test is the staleness check. Core legitimately moves ahead of a published set, so a failure there means it is time to publish a v2, not that the build is broken.
+
 ## Vendored registration templates
 
 A template's hash is its type identity: one changed byte, even reordered whitespace, produces a different hash and therefore a different type. The three JSON files under `src/templates/` are byte-identical copies of the corresponding files in `aqua-rs-sdk`, vendored here because `aqua-rs-sdk-core` ships no registration templates of its own.
+
+These three are the registry's own machinery, and are unrelated to the audit set above: the audit templates are content that gets registered, these three are the forms you fill in to register anything at all.
 
 The three frozen hashes (bare SHA3-256 digests; on the wire, core wraps each as a multihash with a `0x1620` prefix):
 
@@ -261,11 +363,14 @@ Plain files were chosen over an embedded database such as sled or a SQL engine b
 ## Testing
 
 ```bash
-cargo test                                  # unit plus end-to-end
+cargo test                                  # unit, end-to-end, and seed replay
 cargo test --test cross_sdk -- --ignored    # cross-SDK compatibility
+cargo test --test audit_set -- --ignored    # seed staleness against ../aqua-rs-sdk-core
 ```
 
 The end-to-end test (`tests/e2e.rs`) generates a real Ed25519 key through `aqua-rs-sdk-core`, builds and signs real vendor and template registration trees with core's `Aquafier`, submits them through both the library API and the axum router, resolves them by publisher DID, fetches the full tree back, and re-verifies it with core. Nothing is stubbed.
+
+The seed replay test (`tests/audit_set.rs`) loads the committed `seed/audit-set-v1` into a fresh store and asserts all twelve registrations still verify, that every registered hash matches the hash recomputed from its own distributed definition, that the eleven names resolve, that the publisher-DID reverse index is complete, and that the feed replays twelve entries in order.
 
 ## Dependencies
 
