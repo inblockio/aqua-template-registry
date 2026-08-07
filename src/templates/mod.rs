@@ -145,6 +145,60 @@ pub fn catalog() -> &'static [RegistrationTemplate] {
     all().as_slice()
 }
 
+// ---------------------------------------------------------------------------
+// Hashing arbitrary template definitions
+// ---------------------------------------------------------------------------
+
+/// Compute the identity `RevisionLink` of any template definition JSON.
+///
+/// This is the operation a publisher needs before they can register anything:
+/// the `template_hash` in a `template-registration` is the SHA3-256 identity of
+/// the template definition being published. Parsing goes through core's own
+/// `Template` type, which is `deny_unknown_fields`, so a definition that is not
+/// a well-formed template is rejected here rather than registered under a hash
+/// nobody can resolve.
+///
+/// Template ids are always SHA3-256 (PCA-0015 section 3.9), regardless of the
+/// template's own `method`.
+pub fn link_of_definition(definition_json: &str) -> crate::error::Result<RevisionLink> {
+    let template: Template = serde_json::from_str(definition_json).map_err(|e| {
+        crate::error::RegistryError::MalformedPayload(format!(
+            "not a well-formed template definition: {e}"
+        ))
+    })?;
+    template
+        .calculate_link(HashType::Sha3_256)
+        .map_err(|e| crate::error::RegistryError::Core(e.to_string()))
+}
+
+/// Strip the `0x1620` SHA3-256 multihash prefix from a link, leaving the bare
+/// 32-byte digest as `0x` plus 64 hex characters.
+///
+/// Core carries template ids on the wire as multihashes. The `template_hash`
+/// field of a `template-registration` is the bare digest (its JSON Schema
+/// constrains it to exactly 64 hex characters), and so is core's own
+/// `tests/audit_template_hashes.txt` ledger. This is the conversion between
+/// the two.
+pub fn bare_digest(link: &RevisionLink) -> crate::error::Result<String> {
+    let full = link.to_string();
+    full.strip_prefix("0x1620")
+        .filter(|rest| rest.len() == 64 && rest.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|rest| format!("0x{rest}"))
+        .ok_or_else(|| crate::error::RegistryError::InvalidHash {
+            field: "template_hash",
+            reason: format!("{full} is not a SHA3-256 multihash link"),
+        })
+}
+
+/// The bare `template_hash` of a template definition, ready to put straight
+/// into a `template-registration` payload.
+///
+/// Equivalent to [`bare_digest`] of [`link_of_definition`]. This is the one
+/// call a publisher usually wants.
+pub fn template_hash_of_definition(definition_json: &str) -> crate::error::Result<String> {
+    bare_digest(&link_of_definition(definition_json)?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,5 +266,30 @@ mod tests {
     #[test]
     fn three_linked_trees_are_offered() {
         assert_eq!(linked_trees().len(), 3);
+    }
+
+    #[test]
+    fn definition_hashing_round_trips_against_our_own_templates() {
+        // link_of_definition on a vendored file must reproduce that file's
+        // frozen link, and bare_digest must strip exactly the 0x1620 prefix.
+        for t in catalog() {
+            let link = link_of_definition(t.json).expect("vendored template hashes");
+            assert_eq!(&link, &t.link, "{} link mismatch", t.name);
+
+            let bare = bare_digest(&link).expect("bare digest");
+            assert_eq!(bare.len(), 66, "0x plus 64 hex characters");
+            assert_eq!(format!("0x1620{}", &bare[2..]), link.to_string());
+
+            assert_eq!(template_hash_of_definition(t.json).unwrap(), bare);
+        }
+    }
+
+    #[test]
+    fn definition_hashing_rejects_non_templates() {
+        // A publisher pointing at the wrong file must find out here, not after
+        // registering a hash nobody can resolve.
+        assert!(link_of_definition("{}").is_err());
+        assert!(link_of_definition("not json").is_err());
+        assert!(link_of_definition(r#"{"schema":{},"surprise":1}"#).is_err());
     }
 }
