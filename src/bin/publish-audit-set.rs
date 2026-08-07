@@ -343,6 +343,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let body = publisher::to_json_pretty(&tree)?;
         let receipt = registry.submit_template(&body).await?;
+
+        // Upload the definition body too, so consumers need no out-of-band
+        // files. It is accepted purely because it hashes to the hash the
+        // registration above just claimed.
+        let def = registry.submit_definition(&entry.definition)?;
+        debug_assert_eq!(def.template_hash, entry.hash);
+
         println!(
             "seq {:>2}  template  {}",
             receipt.seq, receipt.qualified_name

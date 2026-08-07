@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "allowed_publishers": [
+    "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN"
+  ],
+  "pins": {
+    "inblockio/audit_agent_response": "0xe36f3af11b2c6d5c94e2862e4a66db016ff8e8f5486fe72594daa7df480c5413",
+    "inblockio/audit_agent_thinking": "0xfe1d5fd50335d5d21f3f1976baadc9eab68a0506241ed5303bb8ad0a25a407f1",
+    "inblockio/audit_agent_tool_call": "0x13d08a7ea2a0dc5f4d5a380d9dd9456ec10392bc752f152517dd227bb272592f",
+    "inblockio/audit_api_response": "0x6d1e300bbb0145cedc1a2ff19fd1ad0e0dcfcfde6a4a9b0d6ea67c7d31c4a129",
+    "inblockio/audit_artifact": "0x431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3",
+    "inblockio/audit_hitl_approval": "0xcd588f6994409f3088eef84d231027ba69a1d9d7193fcb1bf0d07a1716ba6560",
+    "inblockio/audit_round_anchor": "0xf174f2f669d102d3d74efb80248a08485fe2c40d18b2df5ccc7d225e794b63e7",
+    "inblockio/audit_session_close": "0x9069525103b9408f039a41454d25ed5ffc59aed9e46224cb19864f2e71e0c23b",
+    "inblockio/audit_tool_result": "0xad46f51cfce3fd961acb2a3d9047b4c217c3da43c32addc41e8e11b84b5c4732",
+    "inblockio/audit_user_prompt": "0x80143d8018fa7a0fa959c115ff7bf7da0d3363192db5202f2904b4626559ecc7",
+    "inblockio/audit_user_turn_marker": "0x9bf38992cb2cc1230edb6539a98e6d3c889c69aa09b1764a4b91b30cb6a36990"
+  }
+}

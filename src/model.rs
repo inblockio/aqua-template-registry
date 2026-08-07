@@ -305,6 +305,17 @@ pub struct FeedPage {
     pub entries: Vec<FeedEntry>,
 }
 
+/// What the registry returns after accepting a definition body.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefinitionReceipt {
+    /// The hash recomputed from the body. Its storage key.
+    pub template_hash: String,
+    /// Size of the accepted body in bytes.
+    pub bytes: usize,
+    /// False when an identical body was already on hand.
+    pub stored: bool,
+}
+
 /// Registry counters, for operators.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stats {

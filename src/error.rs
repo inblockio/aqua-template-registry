@@ -132,6 +132,24 @@ pub enum RegistryError {
     #[error("supersedes target {0} has already been superseded; version lineage must stay linear")]
     AlreadySuperseded(String),
 
+    // ---- definition bodies --------------------------------------------------
+    /// A definition body exceeded the size cap.
+    #[error("definition body is {bytes} bytes, over the {max} byte cap")]
+    DefinitionTooLarge {
+        /// Size of the submitted body.
+        bytes: usize,
+        /// The cap.
+        max: usize,
+    },
+
+    /// A definition body declared a `verification` (WASM) section.
+    #[error("definition {0} carries a verification (WASM) section; this registry serves data-only templates")]
+    DefinitionCarriesWasm(String),
+
+    /// A definition body hashed to something no publisher has registered.
+    #[error("definition hashes to {0}, which no template registration claims")]
+    DefinitionNotRegistered(String),
+
     // ---- lookups ------------------------------------------------------------
     /// Nothing found for the requested key.
     #[error("not found: {0}")]
@@ -177,7 +195,9 @@ impl RegistryError {
             | RegistryError::WrongRegistrationKind { .. }
             | RegistryError::MalformedPayload(_)
             | RegistryError::InvalidName(_)
-            | RegistryError::InvalidHash { .. } => 400,
+            | RegistryError::InvalidHash { .. }
+            | RegistryError::DefinitionTooLarge { .. }
+            | RegistryError::DefinitionCarriesWasm(_) => 400,
 
             RegistryError::TreeNotVerified(_)
             | RegistryError::Unsigned
@@ -187,7 +207,9 @@ impl RegistryError {
             | RegistryError::NotNamespaceOwner { .. }
             | RegistryError::VendorNameTaken { .. } => 403,
 
-            RegistryError::VendorNotRegistered(_) | RegistryError::NotFound(_) => 404,
+            RegistryError::VendorNotRegistered(_)
+            | RegistryError::NotFound(_)
+            | RegistryError::DefinitionNotRegistered(_) => 404,
 
             RegistryError::DuplicateTemplate(_)
             | RegistryError::DuplicateAlias(_)
@@ -224,6 +246,9 @@ impl RegistryError {
             RegistryError::NameCollision(_) => "NAME_COLLISION",
             RegistryError::UnknownSupersedes { .. } => "UNKNOWN_SUPERSEDES",
             RegistryError::AlreadySuperseded(_) => "ALREADY_SUPERSEDED",
+            RegistryError::DefinitionTooLarge { .. } => "DEFINITION_TOO_LARGE",
+            RegistryError::DefinitionCarriesWasm(_) => "DEFINITION_CARRIES_WASM",
+            RegistryError::DefinitionNotRegistered(_) => "DEFINITION_NOT_REGISTERED",
             RegistryError::NotFound(_) => "NOT_FOUND",
             RegistryError::Storage { .. } => "STORAGE_ERROR",
             RegistryError::CorruptStore { .. } => "CORRUPT_STORE",

@@ -43,6 +43,8 @@ pub fn router(registry: SharedRegistry) -> Router {
         .route("/templates/{hash}", get(get_template_tree))
         .route("/templates/{hash}/metadata", get(get_template_metadata))
         .route("/aliases", post(post_alias))
+        .route("/definitions", post(post_definition).get(list_definitions))
+        .route("/definitions/{hash}", get(get_definition))
         .route("/publishers/{did}/vendors", get(get_publisher_vendors))
         .route("/publishers/{did}/templates", get(get_publisher_templates))
         .route("/publishers/{did}/aliases", get(get_publisher_aliases))
@@ -223,6 +225,42 @@ async fn get_template_metadata(
     Path(hash): Path<String>,
 ) -> ApiResult<Json<crate::model::TemplateRecord>> {
     Ok(Json(reg.template(&hash)?))
+}
+
+// ---------------------------------------------------------------------------
+// Definition bodies
+// ---------------------------------------------------------------------------
+
+/// Upload a template definition body.
+///
+/// Unsigned on purpose: the body is content addressed and its address is
+/// already covered by a signed `template-registration`. The registry rehashes
+/// the body and refuses anything that does not land on a registered hash, so a
+/// wrong body cannot be stored no matter who uploads it.
+async fn post_definition(
+    State(reg): State<SharedRegistry>,
+    body: String,
+) -> ApiResult<(StatusCode, Json<crate::model::DefinitionReceipt>)> {
+    let receipt = reg.submit_definition(&body)?;
+    let status = if receipt.stored {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(receipt)))
+}
+
+/// A stored definition body, verbatim, after a recompute-on-read check.
+async fn get_definition(
+    State(reg): State<SharedRegistry>,
+    Path(hash): Path<String>,
+) -> ApiResult<Response> {
+    Ok(raw_json(reg.definition(&hash)?))
+}
+
+/// Every template hash that has a definition body on hand.
+async fn list_definitions(State(reg): State<SharedRegistry>) -> ApiResult<Json<Vec<String>>> {
+    Ok(Json(reg.definition_hashes()?))
 }
 
 // ---------------------------------------------------------------------------

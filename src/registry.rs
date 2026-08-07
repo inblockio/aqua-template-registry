@@ -50,8 +50,8 @@ use aqua_rs_sdk_core::Aquafier;
 
 use crate::error::{RegistryError, Result};
 use crate::model::{
-    AliasRecord, FeedEntry, FeedPage, Receipt, RegistrationKind, RegistrationPayload, Resolution,
-    ResolutionVia, Stats, TemplateRecord, VendorRecord,
+    AliasRecord, DefinitionReceipt, FeedEntry, FeedPage, Receipt, RegistrationKind,
+    RegistrationPayload, Resolution, ResolutionVia, Stats, TemplateRecord, VendorRecord,
 };
 use crate::name::{self, NameValidator};
 use crate::store::Store;
@@ -173,6 +173,106 @@ impl Registry {
 
         apply(&mut index, entry)?;
         Ok(receipt)
+    }
+
+    // ---- definition bodies --------------------------------------------------
+
+    /// Accept a template definition body.
+    ///
+    /// A definition body needs no signature of its own, because it is content
+    /// addressed and its address is already covered by a signature. The
+    /// registry recomputes the hash from the body through core, and accepts it
+    /// only if some publisher already registered exactly that hash in a signed
+    /// `template-registration`. So the body is bound to a signed claim without
+    /// the uploader having to be anyone in particular: a mirror, a CI job, or
+    /// a third party can supply it, and a wrong body simply hashes to
+    /// something nobody registered.
+    ///
+    /// Idempotent: re-uploading the identical body is a no-op. It cannot be
+    /// anything else, since a different body is a different hash.
+    ///
+    /// Bodies carrying a `verification` (WASM) section are refused. Core has
+    /// no WASM runtime, and a registry that will not host executable template
+    /// bodies cannot become a distribution channel for them toward full-SDK
+    /// consumers. This mirrors the same refusal on the import side, which is
+    /// the one that actually protects a given consumer; both are cheap.
+    pub fn submit_definition(&self, body: &str) -> Result<DefinitionReceipt> {
+        if body.len() > crate::trust::MAX_DEFINITION_BYTES {
+            return Err(RegistryError::DefinitionTooLarge {
+                bytes: body.len(),
+                max: crate::trust::MAX_DEFINITION_BYTES,
+            });
+        }
+
+        // Parsing goes through core's Template, so a body that is not a
+        // template is refused here rather than stored under a meaningless key.
+        let template_hash = crate::templates::template_hash_of_definition(body)?;
+
+        if carries_wasm(body) {
+            return Err(RegistryError::DefinitionCarriesWasm(template_hash));
+        }
+
+        let known = {
+            let index = self.index.read().expect("index lock poisoned");
+            index.templates.contains_key(&template_hash)
+        };
+        if !known {
+            return Err(RegistryError::DefinitionNotRegistered(template_hash));
+        }
+
+        let existed = self.store.read_definition(&template_hash)?.is_some();
+        if !existed {
+            self.store.write_definition(&template_hash, body)?;
+        }
+
+        Ok(DefinitionReceipt {
+            template_hash,
+            bytes: body.len(),
+            stored: !existed,
+        })
+    }
+
+    /// A stored definition body, verbatim, after a recompute-on-read check.
+    ///
+    /// The stored body is hashed again and compared against the key it was
+    /// filed under before it is handed out. On-disk corruption or tampering
+    /// therefore surfaces as an error at the moment of serving instead of
+    /// being passed on to a consumer who trusts this registry. A consumer who
+    /// does not trust it re-checks anyway, which is the supported posture, but
+    /// serving something known-bad would still be wrong.
+    pub fn definition(&self, template_hash: &str) -> Result<String> {
+        let body = self
+            .store
+            .read_definition(template_hash)?
+            .ok_or_else(|| RegistryError::NotFound(format!("definition {template_hash}")))?;
+
+        let recomputed = crate::templates::template_hash_of_definition(&body).map_err(|e| {
+            RegistryError::CorruptStore {
+                path: format!("definitions/{template_hash}"),
+                reason: format!("stored body no longer parses as a template: {e}"),
+            }
+        })?;
+        if !recomputed.eq_ignore_ascii_case(template_hash) {
+            return Err(RegistryError::CorruptStore {
+                path: format!("definitions/{template_hash}"),
+                reason: format!("stored body hashes to {recomputed}, not to its own key"),
+            });
+        }
+        Ok(body)
+    }
+
+    /// Every template hash that has a definition body on hand.
+    pub fn definition_hashes(&self) -> Result<Vec<String>> {
+        self.store.definition_hashes()
+    }
+
+    /// Whether a definition body is on hand for this template hash.
+    pub fn has_definition(&self, template_hash: &str) -> bool {
+        self.store
+            .read_definition(template_hash)
+            .ok()
+            .flatten()
+            .is_some()
     }
 
     // ---- lookups ------------------------------------------------------------
@@ -567,6 +667,18 @@ fn current_version(index: &Index, versions: &[String]) -> Option<String> {
         .rev()
         .find(|h| !index.superseded.contains(*h))
         .cloned()
+}
+
+/// True when a template definition declares a `verification` (WASM) section.
+///
+/// Checked on the raw JSON rather than through core's `Template`, because the
+/// question is "does this body claim to carry executable content", and the
+/// answer must not depend on how faithfully a struct round-trips it.
+pub(crate) fn carries_wasm(definition_json: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(definition_json)
+        .ok()
+        .and_then(|v| v.get("verification").cloned())
+        .is_some_and(|v| !v.is_null())
 }
 
 fn now_secs() -> u64 {

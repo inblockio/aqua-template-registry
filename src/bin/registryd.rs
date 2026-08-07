@@ -7,6 +7,11 @@
 //! |---|---|---|
 //! | `REGISTRY_DATA_DIR` | `./data` | Where the feed and tree blobs live |
 //! | `REGISTRY_BIND` | `127.0.0.1:8088` | Listen address |
+//! | `REGISTRY_ADDR_FILE` | unset | Write the bound address here once listening |
+//!
+//! `REGISTRY_ADDR_FILE` exists so a supervisor can bind port 0 and still learn
+//! which port it got. The file is written after the listener is up, so its
+//! appearance is also a readiness signal, and it is removed on clean shutdown.
 //!
 //! It binds loopback by default. Put it behind a reverse proxy for anything
 //! reachable, and see the README on why there is no authentication here (there
@@ -34,12 +39,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = http::router(registry);
     let listener = tokio::net::TcpListener::bind(&bind).await?;
-    println!("  listening: http://{}", listener.local_addr()?);
+    let addr = listener.local_addr()?;
+    println!("  listening: http://{addr}");
+
+    // Written only once the listener is bound, so a supervisor can treat the
+    // file appearing as "the port is open", not merely "the process started".
+    let addr_file = std::env::var("REGISTRY_ADDR_FILE").ok();
+    if let Some(path) = &addr_file {
+        std::fs::write(path, format!("{addr}\n"))?;
+    }
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
+    if let Some(path) = &addr_file {
+        let _ = std::fs::remove_file(path);
+    }
     println!("shutdown complete");
     Ok(())
 }

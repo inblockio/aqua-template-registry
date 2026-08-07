@@ -68,6 +68,8 @@ impl Store {
         fs::create_dir_all(store.entries_dir())
             .map_err(|e| storage_err(&store.entries_dir(), e))?;
         fs::create_dir_all(store.trees_dir()).map_err(|e| storage_err(&store.trees_dir(), e))?;
+        fs::create_dir_all(store.definitions_dir())
+            .map_err(|e| storage_err(&store.definitions_dir(), e))?;
         Ok(store)
     }
 
@@ -85,6 +87,17 @@ impl Store {
     /// The `trees/` subdirectory, one signed-tree JSON file per `tree_tip`.
     fn trees_dir(&self) -> PathBuf {
         self.root.join("trees")
+    }
+
+    /// The `definitions/` subdirectory, one template definition body per bare
+    /// template hash.
+    ///
+    /// Definition bodies are content addressed: the filename IS the hash of
+    /// the contents. Nothing else about them needs to be trusted, which is
+    /// why they are stored separately from the signed registration trees
+    /// rather than inside them.
+    fn definitions_dir(&self) -> PathBuf {
+        self.root.join("definitions")
     }
 
     /// Replays every persisted entry in ascending `seq` order.
@@ -244,6 +257,56 @@ impl Store {
         }
     }
 
+    /// Store a template definition body under its bare hash.
+    ///
+    /// The caller is responsible for having recomputed that hash from the body
+    /// itself; this only guards the filename. Writing is idempotent by
+    /// construction: the same body always lands on the same path with the same
+    /// contents, so a repeat upload is a no-op rather than a conflict.
+    pub fn write_definition(&self, template_hash: &str, body: &str) -> Result<()> {
+        let name = definition_filename(template_hash)?;
+        write_atomically(&self.definitions_dir().join(name), body.as_bytes())
+    }
+
+    /// Read a stored definition body verbatim. `None` when it was never
+    /// uploaded.
+    ///
+    /// Returned exactly as written, because the whole point of a
+    /// content-addressed body is that the reader can hash it and check. A
+    /// re-serialization here would reorder keys and break that check.
+    pub fn read_definition(&self, template_hash: &str) -> Result<Option<String>> {
+        let name = definition_filename(template_hash)?;
+        let path = self.definitions_dir().join(name);
+        match fs::read_to_string(&path) {
+            Ok(contents) => Ok(Some(contents)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(storage_err(&path, e)),
+        }
+    }
+
+    /// Every template hash that has a stored definition body.
+    pub fn definition_hashes(&self) -> Result<Vec<String>> {
+        let dir = self.definitions_dir();
+        let read_dir = match fs::read_dir(&dir) {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(storage_err(&dir, e)),
+        };
+        let mut out = Vec::new();
+        for item in read_dir {
+            let item = item.map_err(|e| storage_err(&dir, e))?;
+            let path = item.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                out.push(stem.to_string());
+            }
+        }
+        out.sort();
+        Ok(out)
+    }
+
     /// The highest `seq` present on disk, or 0 when the store is empty.
     ///
     /// Deliberately does not parse any file's contents: it lists
@@ -341,6 +404,26 @@ fn tree_filename(tree_tip: &str) -> Result<String> {
         Err(RegistryError::CorruptStore {
             path: tree_tip.to_string(),
             reason: "tree_tip must be `0x` followed by 1..=256 hex digits".to_string(),
+        })
+    }
+}
+
+/// Validates a bare template hash and turns it into a filename for
+/// `definitions/`.
+///
+/// Same path-traversal choke point as `tree_filename`, but stricter: a bare
+/// template hash is always exactly `0x` plus 64 hex digits (a SHA3-256 digest),
+/// so anything else is refused rather than merely length-capped.
+fn definition_filename(template_hash: &str) -> Result<String> {
+    let ok = template_hash
+        .strip_prefix("0x")
+        .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()));
+    if ok {
+        Ok(format!("{}.json", template_hash.to_ascii_lowercase()))
+    } else {
+        Err(RegistryError::InvalidHash {
+            field: "template_hash",
+            reason: "must be `0x` followed by exactly 64 hex digits".to_string(),
         })
     }
 }
