@@ -47,6 +47,7 @@ struct Args {
     once: bool,
     interval: u64,
     list: bool,
+    corroborate: Vec<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -59,6 +60,7 @@ fn parse_args() -> Result<Args, String> {
     let mut once = false;
     let mut interval = 30u64;
     let mut list = false;
+    let mut corroborate: Vec<String> = Vec::new();
 
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -76,6 +78,13 @@ fn parse_args() -> Result<Args, String> {
             "--store" => store = PathBuf::from(need(i)?),
             "--cursor" => cursor = Some(PathBuf::from(need(i)?)),
             "--interval" => interval = need(i)?.parse().map_err(|e| format!("--interval: {e}"))?,
+            "--corroborate" => {
+                corroborate = need(i)?
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
             "--approve-new" => {
                 approve_new = true;
                 step = 1;
@@ -91,7 +100,8 @@ fn parse_args() -> Result<Args, String> {
             "-h" | "--help" => {
                 println!(
                     "subscribe --registry URL --publisher DID --trust PATH [--store PATH]\n\
-                               [--cursor PATH] [--approve-new] [--once] [--interval SECS] [--list]"
+                     [--cursor PATH] [--approve-new] [--once] [--interval SECS] [--list]\n\
+                     [--corroborate URL,URL,...]"
                 );
                 std::process::exit(0);
             }
@@ -122,6 +132,7 @@ fn parse_args() -> Result<Args, String> {
         once,
         interval,
         list,
+        corroborate,
     })
 }
 
@@ -132,6 +143,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = ImportStore::open(&args.store)?;
 
     if args.list {
+        // Provenance, when the trust file records any. Shown here because
+        // --list is where an operator looks to answer "what am I running and
+        // who said I should".
+        if !args.trust.as_os_str().is_empty() {
+            if let Ok(policy) = ImportPolicy::load(&args.trust) {
+                println!(
+                    "trust policy {} ({} publisher(s))",
+                    args.trust.display(),
+                    policy.publisher_count()
+                );
+                for entry in policy.publishers() {
+                    match entry.provenance_summary() {
+                        Some(p) => println!("  {}\n      {p}", entry.did),
+                        None => println!("  {}\n      (no provenance recorded)", entry.did),
+                    }
+                }
+                if let Some(max_age) = policy.max_head_age_secs() {
+                    println!("  feed heads must be no older than {max_age}s");
+                }
+                println!();
+            }
+        }
+
         let records = store.records()?;
         println!(
             "{} imported template(s) in {}",
@@ -174,6 +208,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "         Every candidate will be refused. Add the DID to {} first.",
             args.trust.display()
         );
+    }
+
+    // ---- corroboration ------------------------------------------------------
+    //
+    // Run before any sync, and treat a disagreement as fatal. Two mirrors that
+    // disagree about a signed root mean one of them is serving something the
+    // publisher did not sign at that height, and importing from either without
+    // knowing which would be picking a side at random.
+    if !args.corroborate.is_empty() {
+        let mut urls = vec![args.registry.clone()];
+        for u in &args.corroborate {
+            if !urls.contains(u) {
+                urls.push(u.clone());
+            }
+        }
+        println!("corroborating across {} registries", urls.len());
+        let report =
+            aqua_template_registry::corroborate::corroborate(&args.publisher, &urls).await?;
+        for m in &report.mirrors {
+            match (&m.head, &m.error) {
+                (Some(h), _) => println!("  {} head {} root {}", m.url, h.head_seq, h.merkle_root),
+                (None, Some(e)) => println!("  {} no usable head: {e}", m.url),
+                (None, None) => println!("  {} no usable head", m.url),
+            }
+        }
+        for l in &report.lagging {
+            println!("  lagging: {} is {} entr(ies) behind", l.url, l.behind);
+        }
+        for e in &report.equivocations {
+            println!(
+                "  EQUIVOCATION at height {}: {} says {}, {} says {}",
+                e.head_seq, e.url_a, e.root_a, e.url_b, e.root_b
+            );
+        }
+        println!("  {}", report.summary());
+        println!();
+
+        if !report.is_consistent() {
+            eprintln!("refusing to sync: the mirrors disagree about what this publisher signed.");
+            eprintln!("  Resolve this out of band before importing anything. Corroboration cannot");
+            eprintln!("  tell you which mirror is honest, and a majority proves nothing if the");
+            eprintln!("  mirrors are not independent.");
+            std::process::exit(2);
+        }
     }
 
     let cursor_path = args

@@ -91,6 +91,8 @@ pub mod verify;
 pub mod http;
 
 #[cfg(feature = "client")]
+pub mod corroborate;
+#[cfg(feature = "client")]
 pub mod httpclient;
 #[cfg(feature = "client")]
 pub mod subscribe;
@@ -105,7 +107,9 @@ pub use model::{
 pub use name::{NameError, NameValidator};
 pub use registry::Registry;
 pub use store::Store;
-pub use trust::{ImportPolicy, PinDecision, PinMode};
+pub use trust::{ImportPolicy, PinDecision, PinMode, PublisherEntry};
 
+#[cfg(feature = "client")]
+pub use corroborate::{corroborate, CorroborationReport, Equivocation, Lag, MirrorStatus};
 #[cfg(feature = "client")]
 pub use subscribe::{Subscriber, SubscriptionState, SyncReport};
