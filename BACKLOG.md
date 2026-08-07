@@ -9,7 +9,7 @@ the section clears).
 
 ## End-to-end and subscription (requested by Tim, 2026-08-07)
 
-- [ ] R1. Complete full-stack end-to-end test over HTTP, running in the
+- [x] R1. (2026-08-07, `tests/http_stack.rs`) Complete full-stack end-to-end test over HTTP, running in the
       default suite (no `--ignored`): spawn `registryd` on an ephemeral port
       with a fresh data dir, publish the whole audit set through the HTTP API
       (not the library shortcut), then over HTTP: list vendors, resolve
@@ -19,7 +19,8 @@ the section clears).
       in publication order, restart the daemon and assert the feed cursor
       and indexes survive, then shut down cleanly. This supersedes the
       current split between library-level e2e and the curl smoke test.
-- [ ] R2. Consumer subscription and import flow (the missing half of
+- [x] R2. (2026-08-07, `src/trust.rs`, `src/import.rs`, `src/subscribe.rs`,
+      `src/httpclient.rs`, `src/bin/subscribe.rs`) Consumer subscription and import flow (the missing half of
       "register and subscribe"): a client API plus a small CLI that
       1. subscribes to a publisher DID (feed polling with a persisted
          cursor, restart-safe),
@@ -31,12 +32,20 @@ the section clears).
       4. imports accepted templates into a local template store that
          applications can use directly: `create_object` with the imported
          hash and verification via the linked-template-tree pattern.
-- [ ] R3. End-to-end proof of the full loop in one test: publish a template
+      Delivered with a consumer-side trust layer that the original item did
+      not describe, added after a gap analysis: an `ImportPolicy` file
+      (explicit publisher allow list, required, with no trust on first use;
+      lockfile-style hash pins with `PinnedOnly` and `ApproveNew` modes),
+      unconditional rejection of definitions carrying a `verification` (WASM)
+      section, a 262144 byte body cap, and a hash-keyed local store with a
+      verify-on-read guard. Negative suite in `tests/import_security.rs`.
+- [x] R3. (2026-08-07, `tests/full_loop.rs`) End-to-end proof of the full loop in one test: publish a template
       set, subscribe from a second process/store, import, create an object
       of an imported type, verify it green with aqua-rs-sdk-core, and then
       publish one more template and assert the subscriber picks up exactly
       the delta.
-- [ ] R4. Template-body serving over HTTP: the definition JSONs currently
+- [x] R4. (2026-08-07, `POST /definitions`, `GET /definitions/{hash}`,
+      `GET /definitions`) Template-body serving over HTTP: the definition JSONs currently
       ship inside the repo's `seed/audit-set-v1/definitions/`. Add
       `GET /definitions/{hash}` (or equivalent) serving the stored body with
       a recompute-hash-on-read guard, so R2 needs no out-of-band files.
@@ -45,6 +54,23 @@ the section clears).
       required.
 - [ ] R6. Push-style subscription upgrade path (SSE or webhooks) as a design
       note first; polling stays the compatibility baseline.
+
+## Trust and integrity
+
+- [ ] R10. Signed feed head. A registry can currently withhold or reorder feed
+      entries: nothing in a feed page is signed by the publisher, so a
+      consumer cannot detect a gap or a rollback. Have publishers periodically
+      sign a commitment to their own feed (entry count plus a Merkle root over
+      the entries) and have subscribers verify it. This is the one class of
+      attack the import chain does not close, and it is documented as a known
+      limitation in the README's trust-model section.
+- [ ] R11. Trust-policy provenance. `allowed_publishers` entries are written
+      by hand today. Consider recording where a DID came from (out-of-band
+      exchange, a signed introduction, a directory) so an operator reviewing
+      the file months later can tell which entries were verified and how.
+- [ ] R12. Key rotation for publishers. A namespace is bound to one DID for
+      life; there is no way for a publisher to hand a namespace to a new key
+      without consumers re-pinning by hand.
 
 ## Hardening and operations
 

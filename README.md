@@ -159,6 +159,9 @@ Everything is `application/json`, with the single exception of `GET /health`, wh
 | GET | `/templates/{hash}` | The full signed registration tree for a registered template hash, verbatim |
 | GET | `/templates/{hash}/metadata` | Decoded metadata for a registered template hash |
 | POST | `/aliases` | Submit a signed `alias-registration` tree |
+| POST | `/definitions` | Upload a template definition body (unsigned, content addressed) |
+| GET | `/definitions` | List every template hash that has a body on hand |
+| GET | `/definitions/{hash}` | The stored definition body, verbatim, rehashed on read |
 | GET | `/publishers/{did}/vendors` | Every vendor namespace owned by a publisher DID |
 | GET | `/publishers/{did}/templates` | Every template registered by a publisher DID, newest first |
 | GET | `/publishers/{did}/aliases` | Every alias registered by a publisher DID |
@@ -166,6 +169,8 @@ Everything is `application/json`, with the single exception of `GET /health`, wh
 | GET | `/resolve/{vendor}/{name}` | Resolve `<vendor>/<name>` to a template hash |
 
 The three POST bodies are the full signed Aqua tree JSON, taken verbatim: the body is extracted as a raw string, not parsed and re-serialized through a JSON extractor, because storing a re-serialized copy could reorder object keys and the stored bytes would no longer be what the publisher signed.
+
+`POST /definitions` takes no signature. A definition body is content addressed, and its address is already covered by a signed `template-registration`, so the registry rehashes the body and accepts it only when it lands on a hash some publisher already registered. A wrong body cannot be stored no matter who uploads it, which means a mirror or a CI job can supply one. Bodies carrying a `verification` (WASM) section are refused, and so are bodies over 262144 bytes. `GET /definitions/{hash}` rehashes on the way out and refuses to serve anything that no longer matches its own key.
 
 `GET /templates/{hash}` returns the stored signed tree byte-identical to what was submitted, so a consumer can re-verify it with `aqua-rs-sdk-core` and never has to trust the registry. The `{hash}` in that path is the hash of the registered template, the thing being published, not the hash of the registration tree that published it.
 
@@ -189,6 +194,9 @@ Error codes, from `RegistryError::code()` and `RegistryError::status()` in `src/
 | `VENDOR_NAME_TAKEN` | 403 | A different DID already owns this vendor name |
 | `VENDOR_NOT_REGISTERED` | 404 | Referenced vendor namespace has no prior vendor registration |
 | `NOT_FOUND` | 404 | No record for the requested key |
+| `DEFINITION_TOO_LARGE` | 400 | Definition body over the 262144 byte cap |
+| `DEFINITION_CARRIES_WASM` | 400 | Definition body declares a `verification` section |
+| `DEFINITION_NOT_REGISTERED` | 404 | Body hashes to something no registration claims |
 | `DUPLICATE_TEMPLATE` | 409 | This template hash is already registered |
 | `DUPLICATE_ALIAS` | 409 | This qualified alias name is already registered |
 | `NAME_COLLISION` | 409 | A qualified name is claimed by both an alias and a template |
@@ -206,9 +214,28 @@ There is exactly one authority in this registry: the publisher's signing key. Th
 2. Vendor names are first come, first served. Once `V` is claimed by DID `D`, no other DID can claim `V`, including by a case variation, since Latin names are case-folded to their canonical lowercase form before comparison. `D` may re-register `V` to update its display name.
 3. Only the namespace owner may register templates or aliases into that namespace. A `template-registration` or `alias-registration` naming vendor `V` is accepted only if its signer DID equals the `vendor_did` recorded by `V`'s prior vendor registration.
 
-What this registry deliberately does not do: decide whether a DID is trustworthy. That is a consumer-side policy question, out of scope here by design; a domain-scoped trust store on top of a resolved DID is described in the spec's section 4, and this project does not implement it. Consumers subscribe to the publisher DIDs they already trust, using the feed described above.
-
 Cross-vendor aliases are allowed: a vendor can register an alias in their own namespace pointing at a template hash owned by a completely different vendor. Rule 3 only requires the signer to own the namespace the alias *name* lives in; it says nothing about who owns the hash the alias points at.
+
+### What those three rules do not prove
+
+They prove a namespace is internally consistent. They do not prove identity. Nothing in section 3.7 stops anyone from generating a key, claiming a free namespace, and publishing whatever they like, entirely self-consistently and with every signature checking out. "This registration is coherent" and "this publisher is someone you should trust" are different claims, and only the first is in scope for a registry.
+
+So the registry deliberately does not decide who is trustworthy. That decision belongs to the consumer, and it is made explicitly: see "Importing: the consumer side" below, where a committed trust policy names the publisher DIDs a given consumer will accept and pins each template to a specific hash. Every default there is deny.
+
+### Known limitation: the registry can lie by omission
+
+A consumer re-derives everything it acts on from signed trees and content-addressed bodies, so a hostile or buggy registry cannot forge a publisher, invent a name, or substitute a template body. All of those are caught.
+
+What it can still do is **withhold or reorder**. The feed is served by the registry, and nothing in a feed page is signed by the publisher. A registry can therefore:
+
+- omit entries, so a subscriber never learns a template was published,
+- serve a stale view, so a subscriber does not see a newer version,
+- delay entries, so a subscriber acts on an old pin longer than it should,
+- reorder entries relative to publication.
+
+None of that lets it make a consumer accept something the publisher did not sign. It does let it prevent a consumer from seeing something the publisher did sign. A subscriber pinned to specific hashes is largely insulated (it was not going to accept an unpinned surprise anyway), but a subscriber running with `--approve-new` is trusting the registry's ordering as well as the publisher's key.
+
+The fix is a signed feed head: the publisher periodically signs a commitment to their own feed (a count and a Merkle root over the entries), which a consumer checks to detect gaps and rollbacks. That is future work, tracked in `BACKLOG.md`. Until then, a consumer that needs this guarantee should compare what several independent registries serve for the same publisher DID, or obtain the publisher's set out of band, as `seed/audit-set-v1/` allows.
 
 ## Names and versions
 
@@ -328,6 +355,114 @@ cargo test --test audit_set -- --ignored   # also check the seed against ../aqua
 
 The ignored test is the staleness check. Core legitimately moves ahead of a published set, so a failure there means it is time to publish a v2, not that the build is broken.
 
+## Importing: the consumer side
+
+Subscribing is the easy half. Deciding what to accept is the half that matters. A consumer runs `subscribe`, which polls a publisher's feed, downloads each registration and its definition body, puts both through a verification chain, and files what passes into a local store.
+
+### The trust policy
+
+A committed JSON file, because it gets machine-appended and comments would not survive a rewrite. `trust/inblockio-audit-set-v1.json` is the shipped example, pinning the audit set:
+
+```json
+{
+  "version": 1,
+  "allowed_publishers": [
+    "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN"
+  ],
+  "pins": {
+    "inblockio/audit_agent_response": "0xe36f3af11b2c6d5c94e2862e4a66db016ff8e8f5486fe72594daa7df480c5413",
+    "inblockio/audit_agent_thinking": "0xfe1d5fd50335d5d21f3f1976baadc9eab68a0506241ed5303bb8ad0a25a407f1",
+    "inblockio/audit_artifact":       "0x431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3"
+  }
+}
+```
+
+(abridged: the shipped file lists all eleven pins.)
+
+`allowed_publishers` is the identity gate and it is required. An absent file is an error, an empty list imports nothing, and there is no trust on first use: a publisher DID that is not written down is refused no matter how well formed its registrations are. Both halves are validated on load, and one bad entry rejects the whole file rather than being skipped, so a typo cannot silently widen what you accept. An unknown top-level key is an error too, so a misspelled setting fails loudly instead of being ignored.
+
+`pins` is a lockfile: qualified name to bare-digest hash. Two modes govern it:
+
+| Mode | Behaviour |
+|---|---|
+| `PinnedOnly` (default) | Only templates whose name AND hash match an existing pin are imported. |
+| `ApproveNew` (`--approve-new`) | Additionally imports templates from allowed publishers that are not yet pinned, and appends each one to the pin file. |
+
+`ApproveNew` is a CLI flag rather than a config setting on purpose. Turning off pinning should be a deliberate act at the moment of doing it, not a line someone set months ago that nobody rereads. The append is the other half of that: every accepted template ends up durably recorded and reviewable in a diff.
+
+Crucially, `ApproveNew` still refuses a name that is pinned to a different hash. Approving new names is not the same as approving substitutions of old ones, and that substitution is the exact attack pinning exists to catch.
+
+### The verification chain
+
+All of these must pass before a template enters the local store. No warn-and-continue, no partial credit:
+
+1. The vendor registration tree verifies through `aqua-rs-sdk-core` under the strict policy, and is self-certifying.
+2. Its signer DID is in `allowed_publishers`.
+3. The template registration tree verifies through core under the strict policy.
+4. Its signer DID equals the vendor DID from step 1.
+5. The definition body is within the size cap (262144 bytes) and carries no `verification` (WASM) section.
+6. The definition body, rehashed through core's `calculate_link`, equals the `template_hash` the registration claims.
+7. The pin check passes for the mode in force.
+
+Step 6 is the one that is easy to omit and fatal to omit. A registration is a signed claim that a name means a hash. It says nothing whatsoever about whether the bytes someone handed you are the bytes that hash to it.
+
+Step 5 is unconditional and not configurable. Core has no WASM runtime, so a WASM-carrying template could not run here anyway, but the local store must not become a distribution channel for one toward a full-SDK consumer downstream. The same refusal is applied on the registry's own `POST /definitions`.
+
+Note what the chain never consults: the registry's derived JSON. The vendor's owning DID is recovered from the signature on the vendor registration tree, fetched from `GET /vendors/{name}/tree`, not read out of the registry's vendor record. That is what makes a hostile registry unable to inject a publisher.
+
+### The local store
+
+```text
+<store>/
+  templates/<hash>.json       the definition body, verbatim
+  records/<hash>.json         who published it, under what name, when
+  registrations/<hash>.json   the signed registration, kept so the import can be re-proved
+  cursor.json                 the persisted feed position
+```
+
+Keyed by hash throughout, never by name. Names are display data chosen by a publisher; a hash is the thing that identifies a type. Nothing activates on import: an application asks for a specific hash and gets a template tree back, so using a template is always an explicit per-hash act in application code.
+
+Reads are guarded. `ImportStore::definition` rehashes the stored body and refuses to return it if it no longer matches the key it was filed under, so local corruption or tampering after import surfaces as an error rather than as a trusted template.
+
+### Running it
+
+```bash
+cargo run --bin subscribe -- \
+    --registry http://127.0.0.1:8088 \
+    --publisher did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN \
+    --trust trust/inblockio-audit-set-v1.json \
+    --store ./imported \
+    --once
+```
+
+Add `--approve-new` to accept and pin templates that are not yet in the file. Drop `--once` to poll on an interval (`--interval`, default 30 seconds). `--list` prints the local store and talks to nothing.
+
+The cursor advances only over entries that were accepted or already present. A rejected entry does not move it, so the next poll offers that entry again and it imports once the pin exists. A permanently rejected entry is therefore retried on every poll, which is the right trade: silently stepping over something that failed verification would turn a security decision into a one-time event nobody ever sees again.
+
+### Using an imported template
+
+The payoff is the portable-template pattern. A consumer that has never had a template compiled in can create objects of that type and hand any verifier what it needs to check them:
+
+```rust
+use aqua_rs_sdk_core::{Aquafier, schema::AquaTreeWrapper};
+
+let store = ImportStore::open("./imported")?;
+let aquafier = Aquafier::new();
+
+// Create an object of the imported type.
+let tree = aquafier.create_object(link_of(&hash), None, payload, None)?;
+
+// Ship the imported definition alongside so the type resolves for the verifier.
+let result = aquafier.verify_aqua_tree_with_linked_trees(
+    AquaTreeWrapper::new(tree, None, None),
+    vec![store.linked_tree(&hash)?],
+    vec![],
+).await?;
+assert!(result.is_verified());
+```
+
+`tests/full_loop.rs` runs exactly this against a live daemon, and asserts the same object does NOT verify without the linked tree, so the import is provably doing the work.
+
 ## Vendored registration templates
 
 A template's hash is its type identity: one changed byte, even reordered whitespace, produces a different hash and therefore a different type. The three JSON files under `src/templates/` are byte-identical copies of the corresponding files in `aqua-rs-sdk`, vendored here because `aqua-rs-sdk-core` ships no registration templates of its own.
@@ -363,10 +498,19 @@ Plain files were chosen over an embedded database such as sled or a SQL engine b
 ## Testing
 
 ```bash
-cargo test                                  # unit, end-to-end, and seed replay
+cargo test                                  # everything below except the ignored suites
 cargo test --test cross_sdk -- --ignored    # cross-SDK compatibility
 cargo test --test audit_set -- --ignored    # seed staleness against ../aqua-rs-sdk-core
 ```
+
+| Suite | What it covers |
+|---|---|
+| `tests/e2e.rs` | Library-level publish, resolve, trust rules, version chains, aliases |
+| `tests/audit_set.rs` | Replays the committed seed set, drift guard against its own definitions |
+| `tests/http_stack.rs` | Full stack over real HTTP against a spawned `registryd`, including restart |
+| `tests/import_security.rs` | The negative suite: every import control asserted to deny |
+| `tests/full_loop.rs` | Publish, subscribe, import, use an imported template, pick up a delta |
+| `tests/cross_sdk.rs` | Ignored: hash equality against the full `aqua-rs-sdk` |
 
 The end-to-end test (`tests/e2e.rs`) generates a real Ed25519 key through `aqua-rs-sdk-core`, builds and signs real vendor and template registration trees with core's `Aquafier`, submits them through both the library API and the axum router, resolves them by publisher DID, fetches the full tree back, and re-verifies it with core. Nothing is stubbed.
 
@@ -382,8 +526,9 @@ The seed replay test (`tests/audit_set.rs`) loads the committed `seed/audit-set-
 | `hex` | Hash field validation |
 | `unicode-normalization`, `unicode-script` | The section 3.3 name rules need real Unicode NFC and script tables; hand-rolling either would silently diverge from the SDK |
 | `axum`, `tokio`, `tower` (feature `server`, default on) | HTTP surface, async runtime, service plumbing |
+| `hyper`, `hyper-util`, `http-body-util`, `bytes` (feature `client`, default on) | The subscriber's HTTP client. All four already arrive under `axum`, so the `client` feature adds no new dependency subtree. hyper's low-level http1 client is used rather than a batteries-included one because a subscriber polls a handful of endpoints on one origin, and every feature not present is one that cannot go wrong in a security-relevant path |
 
-The library alone can be used with `default-features = false`, which drops `axum`, `tokio`, and `tower` entirely.
+The two networking features are separate: `--no-default-features --features client` builds the subscriber without `axum`, and `--features server` builds the registry without the client. `default-features = false` drops both and leaves the library, which still publishes, verifies, and imports.
 
 `aqua-rs-sdk` (the full SDK, not `-core`) is a dev-dependency, used only by the `#[ignore]`d cross-SDK tests in `tests/cross_sdk.rs`; it is never linked into the library or the `registryd` binary.
 
@@ -391,7 +536,9 @@ The library alone can be used with `default-features = false`, which drops `axum
 
 - No on-chain registry. Registration state lives on disk in one service, not in a contract.
 - No SWARM or other content-addressed transport. Storage is local, retrieval is HTTP.
-- No trust store integration. See the trust model section above: trust is the consumer's decision, not this registry's.
+- No trust store in the registry. Trust is the consumer's decision, expressed in a local policy file (see "Importing: the consumer side"). The spec's section 4 domain-scoped trust store, with ENS or DNS resolution of a vendor name to a DID, is not implemented: a publisher DID is written down by hand, not resolved.
+- No signed feed head, so a registry can withhold or reorder entries. See "Known limitation" above.
+- No transport security in the client. `registryd` binds loopback and expects a reverse proxy; everything a subscriber acts on is checked after it arrives, so TLS is confidentiality and availability, not integrity.
 - No plugin or WASM module distribution. The spec's `plugin-registration` template is not implemented, and `aqua-rs-sdk-core` has no WASM runtime to run a plugin against anyway.
 - No federation or replication between registries. A consumer polls whichever registries it chooses to.
 - No authentication or API keys on the write path. There is nothing to authenticate: every write is a signed tree that authenticates itself, and an unauthorized write is rejected by the trust rules above, not by a missing credential.
