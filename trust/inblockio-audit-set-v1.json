@@ -1,7 +1,13 @@
 {
   "version": 1,
   "allowed_publishers": [
-    "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN"
+    {
+      "did": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+      "source": "seed/audit-set-v1/manifest.json in this repository",
+      "verified_by": "inblock.io assets GmbH, the publisher of the audit set",
+      "verified_on": "2026-08-07",
+      "note": "Self-published example. A consumer who did not get this DID from inblock.io directly should replace this entry with one they verified themselves."
+    }
   ],
   "pins": {
     "inblockio/audit_agent_response": "0xe36f3af11b2c6d5c94e2862e4a66db016ff8e8f5486fe72594daa7df480c5413",

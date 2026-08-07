@@ -66,6 +66,174 @@ pub const MAX_DEFINITION_BYTES: usize = 256 * 1024;
 /// migration story for existing files, not just a new number here.
 const CURRENT_VERSION: u32 = 1;
 
+/// Cap on any single provenance string, so a policy file cannot quietly
+/// become a document store.
+const MAX_PROVENANCE_LEN: usize = 512;
+
+/// Tolerance for a feed head timestamped slightly in the future.
+///
+/// Clocks disagree. Without a tolerance a publisher whose clock runs a minute
+/// fast would produce heads that every subscriber refuses; with an unbounded
+/// one, a head dated far in the future would never be stale and the freshness
+/// policy would be trivially defeated. Five minutes is the usual NTP-ish
+/// allowance.
+pub const FUTURE_HEAD_TOLERANCE_SECS: u64 = 300;
+
+/// An allowed publisher, optionally annotated with where the DID came from.
+///
+/// A DID in a trust file is a bare string with no story attached, and six
+/// months later nobody can tell whether it was verified in person, copied off
+/// a web page, or pasted from a chat message. These annotations are that story.
+/// They are advisory: nothing in the import chain reads them, and adding a
+/// convincing `verified_by` to an entry does not make it more trusted. Their
+/// whole job is to make a human review of the file possible.
+///
+/// # Wire form
+///
+/// Serializes as a bare JSON string when there is no provenance, and as an
+/// object when there is. That keeps every trust file written before this
+/// existed valid and unchanged, and keeps `save` from rewriting a plain list
+/// into a verbose one for no reason.
+///
+/// ```json
+/// "did:key:z6MkBare"
+/// { "did": "did:key:z6MkAnnotated", "source": "handed over in person" }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PublisherEntry {
+    /// The publisher DID. The only field the import chain reads.
+    pub did: String,
+    /// Where this DID came from (a URL, "in person at X", "signed email", ...).
+    pub source: Option<String>,
+    /// Who checked it, for an operator reading the file later.
+    pub verified_by: Option<String>,
+    /// When it was checked. Free-form; an ISO date is the obvious choice.
+    pub verified_on: Option<String>,
+    /// Anything else worth recording.
+    pub note: Option<String>,
+}
+
+impl PublisherEntry {
+    /// An entry with no provenance recorded.
+    pub fn bare(did: impl Into<String>) -> Self {
+        PublisherEntry {
+            did: did.into(),
+            source: None,
+            verified_by: None,
+            verified_on: None,
+            note: None,
+        }
+    }
+
+    /// True when nothing but the DID is recorded.
+    pub fn is_bare(&self) -> bool {
+        self.source.is_none()
+            && self.verified_by.is_none()
+            && self.verified_on.is_none()
+            && self.note.is_none()
+    }
+
+    /// A one-line human summary of the provenance, or `None` when bare.
+    pub fn provenance_summary(&self) -> Option<String> {
+        if self.is_bare() {
+            return None;
+        }
+        let mut parts = Vec::new();
+        if let Some(s) = &self.source {
+            parts.push(format!("source: {s}"));
+        }
+        if let Some(v) = &self.verified_by {
+            parts.push(format!("verified by: {v}"));
+        }
+        if let Some(d) = &self.verified_on {
+            parts.push(format!("on: {d}"));
+        }
+        if let Some(n) = &self.note {
+            parts.push(format!("note: {n}"));
+        }
+        Some(parts.join(", "))
+    }
+
+    fn validate(&self) -> std::result::Result<(), String> {
+        if !is_valid_publisher_did(&self.did) {
+            return Err(format!(
+                "allowed_publishers entry {:?} is not a DID: must be non-empty and start with \"did:\"",
+                self.did
+            ));
+        }
+        for (label, value) in [
+            ("source", &self.source),
+            ("verified_by", &self.verified_by),
+            ("verified_on", &self.verified_on),
+            ("note", &self.note),
+        ] {
+            if let Some(v) = value {
+                if v.len() > MAX_PROVENANCE_LEN {
+                    return Err(format!(
+                        "allowed_publishers entry {:?} has a {label} of {} bytes, over the {MAX_PROVENANCE_LEN} byte cap",
+                        self.did,
+                        v.len()
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The object form, used only as a serde staging type.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnnotatedPublisher {
+    did: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    verified_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    verified_on: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum PublisherWire {
+    Bare(String),
+    Annotated(AnnotatedPublisher),
+}
+
+impl Serialize for PublisherEntry {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        if self.is_bare() {
+            return s.serialize_str(&self.did);
+        }
+        AnnotatedPublisher {
+            did: self.did.clone(),
+            source: self.source.clone(),
+            verified_by: self.verified_by.clone(),
+            verified_on: self.verified_on.clone(),
+            note: self.note.clone(),
+        }
+        .serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for PublisherEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        Ok(match PublisherWire::deserialize(d)? {
+            PublisherWire::Bare(did) => PublisherEntry::bare(did),
+            PublisherWire::Annotated(a) => PublisherEntry {
+                did: a.did,
+                source: a.source,
+                verified_by: a.verified_by,
+                verified_on: a.verified_on,
+                note: a.note,
+            },
+        })
+    }
+}
+
 /// Field name reported in [`RegistryError::InvalidHash`] when the
 /// `template_hash` argument to [`ImportPolicy::approve`] is malformed.
 ///
@@ -148,7 +316,12 @@ pub struct ImportPolicy {
     /// pinning. Absent from a file, this is the empty set: no publisher is
     /// allowed. Never a wildcard.
     #[serde(default)]
-    allowed_publishers: BTreeSet<String>,
+    allowed_publishers: Vec<PublisherEntry>,
+    /// Refuse a feed head older than this many seconds, measured against the
+    /// head's signed `covered_at`. Absent means no freshness requirement,
+    /// which is what every policy file written before this existed means.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_head_age_secs: Option<u64>,
     /// Canonical qualified name to canonical (`0x` plus lowercase hex)
     /// pinned hash. Absent from a file, this is empty: nothing is pinned.
     #[serde(default)]
@@ -160,7 +333,8 @@ impl ImportPolicy {
     pub fn empty() -> Self {
         ImportPolicy {
             version: CURRENT_VERSION,
-            allowed_publishers: BTreeSet::new(),
+            allowed_publishers: Vec::new(),
+            max_head_age_secs: None,
             pins: BTreeMap::new(),
         }
     }
@@ -217,16 +391,27 @@ impl ImportPolicy {
             });
         }
 
-        for did in &self.allowed_publishers {
-            if !is_valid_publisher_did(did) {
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        for entry in &self.allowed_publishers {
+            entry
+                .validate()
+                .map_err(|reason| RegistryError::CorruptStore {
+                    path: context.to_string(),
+                    reason,
+                })?;
+            // A DID listed twice with different provenance is ambiguous: there
+            // is no way to tell which story is the real one, and picking either
+            // would be inventing an answer. Refuse the file instead.
+            if !seen.insert(entry.did.as_str()) {
                 return Err(RegistryError::CorruptStore {
                     path: context.to_string(),
-                    reason: format!(
-                        "allowed_publishers entry {did:?} is not a DID: must be non-empty and start with \"did:\""
-                    ),
+                    reason: format!("allowed_publishers lists {:?} more than once", entry.did),
                 });
             }
         }
+        // Deterministic order so `save` emits a stable diff regardless of how
+        // the file was written by hand.
+        self.allowed_publishers.sort_by(|a, b| a.did.cmp(&b.did));
 
         let mut canonical_pins: BTreeMap<String, String> = BTreeMap::new();
         for (raw_key, raw_hash) in &self.pins {
@@ -282,7 +467,30 @@ impl ImportPolicy {
 
     /// True when this DID is explicitly listed.
     pub fn allows_publisher(&self, did: &str) -> bool {
-        self.allowed_publishers.contains(did)
+        self.allowed_publishers.iter().any(|e| e.did == did)
+    }
+
+    /// The full entry for a DID, including any provenance annotations.
+    pub fn publisher(&self, did: &str) -> Option<&PublisherEntry> {
+        self.allowed_publishers.iter().find(|e| e.did == did)
+    }
+
+    /// Every allowed publisher, sorted by DID.
+    pub fn publishers(&self) -> &[PublisherEntry] {
+        &self.allowed_publishers
+    }
+
+    /// Refuse a feed head whose signed `covered_at` is older than this.
+    ///
+    /// `None` means no freshness requirement, which is what a policy file that
+    /// predates this setting means and what it keeps meaning.
+    pub fn max_head_age_secs(&self) -> Option<u64> {
+        self.max_head_age_secs
+    }
+
+    /// Set or clear the freshness requirement.
+    pub fn set_max_head_age_secs(&mut self, seconds: Option<u64>) {
+        self.max_head_age_secs = seconds;
     }
 
     /// Number of allowed publishers.
@@ -386,10 +594,25 @@ impl ImportPolicy {
     /// build an [`ImportPolicy`] in memory that [`ImportPolicy::load`] would
     /// then refuse to read back after a [`ImportPolicy::save`].
     pub fn allow_publisher(&mut self, did: &str) -> bool {
-        if !is_valid_publisher_did(did) {
+        self.allow_publisher_entry(PublisherEntry::bare(did))
+    }
+
+    /// Add an allowed publisher with provenance. Returns true when newly added.
+    ///
+    /// An existing DID is left alone rather than having its provenance
+    /// overwritten: silently rewriting where a consumer recorded that a key
+    /// came from would destroy the only audit trail the file has. Edit the
+    /// file, or remove and re-add, to change it deliberately.
+    pub fn allow_publisher_entry(&mut self, entry: PublisherEntry) -> bool {
+        if entry.validate().is_err() {
             return false;
         }
-        self.allowed_publishers.insert(did.to_string())
+        if self.allows_publisher(&entry.did) {
+            return false;
+        }
+        self.allowed_publishers.push(entry);
+        self.allowed_publishers.sort_by(|a, b| a.did.cmp(&b.did));
+        true
     }
 }
 
