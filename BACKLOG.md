@@ -49,14 +49,23 @@ the section clears).
       ship inside the repo's `seed/audit-set-v1/definitions/`. Add
       `GET /definitions/{hash}` (or equivalent) serving the stored body with
       a recompute-hash-on-read guard, so R2 needs no out-of-band files.
-- [ ] R5. Alias registrations for the audit set (short names such as
+- [x] R5. (2026-08-07, `seed/audit-aliases-v1/`, `tests/alias_set.rs`) Alias registrations for the audit set (short names such as
       `inblockio/prompt`) as audit-set follow-up; additive, no v2 of the set
       required.
-- [ ] R6. Push-style subscription upgrade path (SSE or webhooks) as a design
+      Published as a SEPARATE additive seed set rather than as extra files in
+      audit-set-v1. That set's twelve signed trees and its feed head are
+      published bytes, and its head commits to exactly twelve entries; adding
+      eleven aliases to that directory would have left the shipped head
+      describing a prefix of a longer feed. The original head still verifies
+      over the extended feed (a head covers a prefix), which is asserted.
+- [x] R6. (2026-08-07, `docs/design/push-subscriptions.md`) Push-style subscription upgrade path (SSE or webhooks) as a design
       note first; polling stays the compatibility baseline.
 
 ## Trust and integrity
 
+      Recommendation: SSE if a trigger is ever met, never webhooks, polling
+      stays the baseline. Push can only ever be a notification hint that
+      triggers a normal verified sync, never a delivery path.
 - [x] R10. (2026-08-07, `src/feedhead.rs`, `src/templates/feed_head.json`,
       `tests/feed_head_security.rs`, `tests/feed_head_loop.rs`) Signed feed
       head. Publishers now sign a commitment to their own feed (a count of
@@ -80,28 +89,81 @@ the section clears).
       cannot tell a current head from a replayed slightly-stale one, there is
       no freshness or liveness guarantee, and collusion with the publisher's
       own key is out of scope by definition.
-- [ ] R13. Head freshness. A feed head says "at least N entries existed when
+- [x] R13. (2026-08-07, `src/feedhead.rs` (`check_freshness`), `tests/head_freshness.rs`) Head freshness. A feed head says "at least N entries existed when
       I signed this", never "nothing newer exists", and it carries no expiry.
       A registry can serve a genuine but months-old head indefinitely and a
       fresh subscriber cannot tell. Options: a publisher-declared maximum head
       age that subscribers enforce, or comparing heads across mirrors.
-- [ ] R14. Cross-registry corroboration. A subscriber talks to the registries
+      No template version bump was needed: `covered_at` already exists in the
+      feed_head payload and is covered by the signature. The first design draft
+      claimed the signature revision's own local_timestamp was malleable; the
+      test rewrote it, rekeyed the revision, and core still refused the tree,
+      so that reasoning was wrong and the doc was corrected. `covered_at` is
+      still the right field, for meaning rather than integrity.
+- [x] R14. (2026-08-07, `src/corroborate.rs`, `tests/head_freshness.rs`) Cross-registry corroboration. A subscriber talks to the registries
       it is configured with and never compares them. Fetching the same
       publisher's head from two independent registries would catch a single
       registry replaying a stale head, which is the main gap R10 leaves.
-- [ ] R11. Trust-policy provenance. `allowed_publishers` entries are written
+      Corroboration, not consensus: it reports equivocation and stops rather
+      than voting or picking a majority, since a majority of mirrors run by one
+      party is not evidence. Lag and unreachability are reported but are not
+      failures.
+- [x] R11. (2026-08-07, `src/trust.rs` (`PublisherEntry`), `trust/inblockio-audit-set-v1.json`) Trust-policy provenance. `allowed_publishers` entries are written
       by hand today. Consider recording where a DID came from (out-of-band
       exchange, a signed introduction, a directory) so an operator reviewing
       the file months later can tell which entries were verified and how.
-- [ ] R12. Key rotation for publishers. A namespace is bound to one DID for
+      Entries accept either a bare DID string or an object with source,
+      verified_by, verified_on and note. Both forms parse, `save` emits
+      whichever an entry uses, and files written before this still load
+      unchanged, so the format version stays 1. Annotations are advisory:
+      nothing in the import chain reads them.
+- [ ] R12. Key rotation for publishers. DESIGN COMPLETE, implementation open.
+      See `docs/design/publisher-key-rotation.md` (2026-08-07) for the
+      continuity-proof shape, the consumer pin-migration flow, and the
+      interaction with feed heads. The blocking finding recorded there: a
+      purely cryptographic continuity proof cannot distinguish a legitimate
+      rotation from an attacker-run one when the old key is compromised, since
+      the attacker holds the old key and can generate the new one, so any v1
+      needs consumer-side manual approval rather than automatic acceptance.
+      Also blocked on a spec question: feed head ordinals are publisher-local
+      and a rotated namespace has a feed split across two DIDs, so
+      namespace-scoped heads would be a versioned leaf-definition change.
+      Original description: A namespace is bound to one DID for
       life; there is no way for a publisher to hand a namespace to a new key
       without consumers re-pinning by hand.
 
+- [ ] R15. Corroboration inside the library sync path. `--corroborate` is a
+      CLI-level pre-flight today; `Subscriber::sync` itself does not consult
+      other mirrors. A library consumer gets no corroboration unless it calls
+      `corroborate` itself.
+- [ ] R16. Mirror independence is unmeasurable. Corroboration is worth exactly
+      what the independence of the configured mirrors is worth, and nothing
+      records or checks whether two URLs are actually run by different parties.
+      At minimum the trust config could carry an operator annotation per mirror
+      the way R11 does for publishers.
+- [ ] R17. Alias version lineage. Aliases have no `supersedes` equivalent, so
+      repointing an alias at a new hash is not expressible; today it would need
+      a second alias name. Decide whether aliases should be mutable by their
+      owner and, if so, how a consumer pins one.
+
 ## Hardening and operations
 
-- [ ] R7. Concurrency test on the write path (two simultaneous submissions
+- [x] R7. (2026-08-07, `tests/concurrency.rs`) Concurrency test on the write path (two simultaneous submissions
       for the same vendor/name; assert one 409 and a consistent store).
-- [ ] R8. Data-dir migration/versioning note for the file store (what
+      Finding: there is no observable index-level race. `submit` holds the
+      write lock across the trust check, seq assignment, durable append, and
+      index update, so that whole span is one critical section; only the
+      cryptographic verification runs concurrently. Roughly 1600 racing
+      submissions produced exactly one winner every time.
+- [x] R8. (2026-08-07, `src/model.rs` (`record_version`), README "Format and versioning") Data-dir migration/versioning note for the file store (what
       happens when the record shape evolves).
-- [ ] R9. CI: run the cross-SDK `--ignored` tests in an environment that has
+- [x] R9. (2026-08-07, `.github/workflows/ci.yml`) CI: run the cross-SDK `--ignored` tests in an environment that has
       both SDK checkouts; keep them ignored in the public default suite.
+
+      Two jobs: the default one clones aqua-rs-sdk-core as a sibling (the path
+      dependency makes that a build prerequisite, not a nicety); the cross-SDK
+      job additionally clones the full SDK and is gated on a secret so it is a
+      no-op when unavailable and fully blocking when configured. Note
+      `cargo fmt --all` reaches into local path dependencies, so the workflow
+      uses plain `cargo fmt --check`; and RUSTFLAGS=-D warnings cannot be set
+      because the sibling core emits its own warnings.

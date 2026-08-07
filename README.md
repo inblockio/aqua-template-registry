@@ -431,6 +431,20 @@ A committed JSON file, because it gets machine-appended and comments would not s
 
 (abridged: the shipped file lists all eleven pins.)
 
+Entries in `allowed_publishers` may be a bare DID string, as above, or an object recording where the DID came from:
+
+```json
+{
+  "did": "did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN",
+  "source": "seed/audit-set-v1/manifest.json in this repository",
+  "verified_by": "inblock.io assets GmbH, the publisher of the audit set",
+  "verified_on": "2026-08-07",
+  "note": "Self-published example."
+}
+```
+
+The annotations are advisory. Nothing in the import chain reads them, and a convincing `verified_by` does not make an entry more trusted. Their job is to make a human review possible: a bare DID in a file has no story attached, and six months later nobody can tell whether it was verified in person or pasted out of a chat message. Both forms parse, a file written before annotations existed is unchanged and still valid, and `save` emits whichever form an entry actually uses so a plain list does not get rewritten into a verbose one. `subscribe --list --trust <file>` prints the provenance.
+
 `allowed_publishers` is the identity gate and it is required. An absent file is an error, an empty list imports nothing, and there is no trust on first use: a publisher DID that is not written down is refused no matter how well formed its registrations are. Both halves are validated on load, and one bad entry rejects the whole file rather than being skipped, so a typo cannot silently widen what you accept. An unknown top-level key is an error too, so a misspelled setting fails loudly instead of being ignored.
 
 `pins` is a lockfile: qualified name to bare-digest hash. Two modes govern it:
@@ -439,6 +453,14 @@ A committed JSON file, because it gets machine-appended and comments would not s
 |---|---|
 | `PinnedOnly` (default) | Only templates whose name AND hash match an existing pin are imported. |
 | `ApproveNew` (`--approve-new`) | Additionally imports templates from allowed publishers that are not yet pinned, and appends each one to the pin file. |
+
+An optional `max_head_age_secs` refuses a feed head older than the given number of seconds:
+
+```json
+{ "version": 1, "max_head_age_secs": 86400, "allowed_publishers": [ ... ], "pins": { ... } }
+```
+
+Absent means no freshness requirement, which is what every policy file written before this setting existed means and keeps meaning. The age is measured against `covered_at`, the timestamp inside the head's signed payload, so it cannot be moved by anyone but the publisher. A head dated more than 300 seconds in the future is refused regardless, because a future-dated head can never be stale and would otherwise defeat the policy outright. See `src/feedhead.rs::check_freshness` for why `covered_at` is the field used rather than the signature revision's own timestamp.
 
 `ApproveNew` is a CLI flag rather than a config setting on purpose. Turning off pinning should be a deliberate act at the moment of doing it, not a line someone set months ago that nobody rereads. The append is the other half of that: every accepted template ends up durably recorded and reviewable in a diff.
 
@@ -490,6 +512,27 @@ cargo run --bin subscribe -- \
 Add `--approve-new` to accept and pin templates that are not yet in the file. Drop `--once` to poll on an interval (`--interval`, default 30 seconds). `--list` prints the local store and talks to nothing.
 
 The cursor advances only over entries that were accepted or already present. A rejected entry does not move it, so the next poll offers that entry again and it imports once the pin exists. A permanently rejected entry is therefore retried on every poll, which is the right trade: silently stepping over something that failed verification would turn a security decision into a one-time event nobody ever sees again.
+
+### Corroborating across registries
+
+A subscriber checks a feed head against its own memory, so on first contact it cannot tell a current head from a genuine but months-old one a registry replayed. Two registries serving the same publisher can be compared:
+
+```bash
+cargo run --bin subscribe -- \
+    --registry http://registry-a.example \
+    --corroborate http://registry-b.example,http://registry-c.example \
+    --publisher did:key:z6Mk... --trust trust/policy.json --once
+```
+
+Every mirror's head is verified in full before anything is compared, so a mirror serving a forgery is recorded as an error rather than treated as a dissenting opinion. Three outcomes are distinguished, and the distinction is the point:
+
+| Outcome | Meaning | Fatal |
+|---|---|---|
+| Equivocation | Two mirrors serve different signed roots at the same height | Yes, the CLI refuses to sync |
+| Lag | One mirror is behind another | No, mirrors sync on their own schedules |
+| Unreachable | A mirror did not answer | No, but it does not count as agreement either |
+
+This is corroboration, not consensus. It does not vote, does not pick a majority, and does not decide which mirror is honest, because a majority of mirrors run by one party is not evidence of anything. It reports the disagreement and stops. Mirrors that collude, or that are all fed from the same upstream, agree perfectly while all being stale: corroboration is worth exactly what the independence of the mirrors is worth, and nothing here can measure that.
 
 ### Using an imported template
 
@@ -545,6 +588,19 @@ cargo test --test cross_sdk -- --ignored
 
 The append-only feed under `entries/` is the only durable state. Every index the registry serves (vendor ownership, template lineage, alias resolution, the reverse per-publisher indexes) is derived and rebuilt by replaying that feed at startup. Writes are atomic: each file is written to a `.tmp` sibling in the same directory, `fsync`ed, and then renamed into place, so a crash mid-write never leaves a corrupt or partial file behind. The tree blob is written before its entry file, so any entry that exists on disk is guaranteed to have its tree blob already there too; the only possible crash artifact is a harmless orphaned tree blob with no entry pointing at it yet. Tree blobs are stored verbatim rather than re-serialized, because re-serializing through `serde_json` could reorder object keys, and the bytes on disk would no longer be exactly what the publisher signed.
 
+### Format and versioning
+
+Each feed entry carries a `record_version` (currently 1). It is defaulted on read, so a data directory written before the field existed loads as version 1 and needs no migration; `src/store.rs::an_entry_written_before_record_version_existed_still_loads` asserts that rather than assuming it.
+
+The policy for changing the record shape follows from the feed being append only and never rewritten in place:
+
+- **Additive fields** are the normal case. Add them with `#[serde(default)]`, leave `record_version` alone, and old and new entries coexist. Nothing needs migrating because nothing is rewritten.
+- **A breaking change** (a field removed, retyped, or given new meaning) bumps `record_version` for newly written entries only. Old entries keep the version they were written with, so a data directory legitimately contains several versions at once and a reader must handle every version it may encounter. This is the cost of an append-only log, and it is deliberate: the alternative is rewriting history, which for a store whose entries are receipts for signed submissions is exactly what should not happen.
+- **Never rewrite an existing entry file.** The tree blobs it points at are byte-exact published bytes, and the whole store is meant to be reconstructible by replay.
+- **A change that cannot be expressed either way** is a new data directory, not a migration. Republishing from the signed trees is always available, since those are the durable artefact and the index is derived.
+
+Definition bodies and tree blobs are content addressed and are therefore never versioned: a change to one is a different file.
+
 Plain files were chosen over an embedded database such as sled or a SQL engine because the durable state here is a small append-only log: no query planner is needed, no concurrent-writer story is needed, no schema migration story is needed. A directory of readable JSON is operator-inspectable (`cat`, `grep`, `ls`), trivially backed up (`cp -r`, `rsync`, `tar`), and adds zero extra dependencies.
 
 ## Testing
@@ -563,6 +619,9 @@ cargo test --test audit_set -- --ignored    # seed staleness against ../aqua-rs-
 | `tests/import_security.rs` | The negative suite: every import control asserted to deny |
 | `tests/feed_head_security.rs` | The feed head negative suite: withholding, reordering, rollback, equivocation, and forged heads |
 | `tests/feed_head_loop.rs` | Feed heads end to end: a staged registry withholding, rolling back, and dropping a head |
+| `tests/head_freshness.rs` | Which timestamp is trustworthy, the stale-head refusal, and cross-registry corroboration |
+| `tests/alias_set.rs` | The alias seed set, short names resolving, and the original head still covering its prefix |
+| `tests/concurrency.rs` | Racing writes: exactly one winner, dense sequence numbers, consistent replay |
 | `tests/full_loop.rs` | Publish, subscribe, import, use an imported template, pick up a delta |
 | `tests/cross_sdk.rs` | Ignored: hash equality against the full `aqua-rs-sdk` |
 
