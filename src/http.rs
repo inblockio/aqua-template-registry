@@ -45,6 +45,10 @@ pub fn router(registry: SharedRegistry) -> Router {
         .route("/aliases", post(post_alias))
         .route("/definitions", post(post_definition).get(list_definitions))
         .route("/definitions/{hash}", get(get_definition))
+        .route("/heads", post(post_head))
+        .route("/publishers/{did}/head", get(get_latest_head))
+        .route("/publishers/{did}/heads", get(list_heads))
+        .route("/publishers/{did}/heads/{seq}", get(get_head_at))
         .route("/publishers/{did}/vendors", get(get_publisher_vendors))
         .route("/publishers/{did}/templates", get(get_publisher_templates))
         .route("/publishers/{did}/aliases", get(get_publisher_aliases))
@@ -261,6 +265,62 @@ async fn get_definition(
 /// Every template hash that has a definition body on hand.
 async fn list_definitions(State(reg): State<SharedRegistry>) -> ApiResult<Json<Vec<String>>> {
     Ok(Json(reg.definition_hashes()?))
+}
+
+// ---------------------------------------------------------------------------
+// Feed heads
+// ---------------------------------------------------------------------------
+
+/// Submit a publisher's signed commitment to their own feed.
+async fn post_head(
+    State(reg): State<SharedRegistry>,
+    body: String,
+) -> ApiResult<(StatusCode, Json<crate::model::HeadReceipt>)> {
+    let receipt = reg.submit_head(&body).await?;
+    let status = if receipt.stored {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(receipt)))
+}
+
+/// The publisher's highest signed feed head, verbatim.
+///
+/// 404 when the publisher has never signed one. A subscriber treats that as
+/// bootstrapping (tolerated, reported) only if it has never seen a head from
+/// this publisher before; once one has been verified, a 404 here is a failure.
+async fn get_latest_head(
+    State(reg): State<SharedRegistry>,
+    Path(did): Path<String>,
+) -> ApiResult<Response> {
+    match reg.latest_head(&did)? {
+        Some(tree) => Ok(raw_json(tree)),
+        None => Err(ApiError(RegistryError::NotFound(format!(
+            "no feed head for {did}"
+        )))),
+    }
+}
+
+/// Every height at which this publisher has a stored head.
+async fn list_heads(
+    State(reg): State<SharedRegistry>,
+    Path(did): Path<String>,
+) -> ApiResult<Json<Vec<u64>>> {
+    Ok(Json(reg.head_seqs(&did)?))
+}
+
+/// A publisher's head at a specific height, verbatim.
+async fn get_head_at(
+    State(reg): State<SharedRegistry>,
+    Path((did, seq)): Path<(String, u64)>,
+) -> ApiResult<Response> {
+    match reg.head_at(&did, seq)? {
+        Some(tree) => Ok(raw_json(tree)),
+        None => Err(ApiError(RegistryError::NotFound(format!(
+            "no feed head for {did} at height {seq}"
+        )))),
+    }
 }
 
 // ---------------------------------------------------------------------------

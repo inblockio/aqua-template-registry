@@ -316,6 +316,21 @@ pub struct DefinitionReceipt {
     pub stored: bool,
 }
 
+/// What the registry returns after accepting a feed head.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeadReceipt {
+    /// The publisher who signed it.
+    pub publisher_did: String,
+    /// Entries covered.
+    pub head_seq: u64,
+    /// The signed root.
+    pub merkle_root: String,
+    /// Tip hash of the head tree.
+    pub tree_tip: String,
+    /// False when an identical head was already stored at this height.
+    pub stored: bool,
+}
+
 /// Registry counters, for operators.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stats {

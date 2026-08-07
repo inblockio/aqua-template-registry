@@ -70,6 +70,7 @@ impl Store {
         fs::create_dir_all(store.trees_dir()).map_err(|e| storage_err(&store.trees_dir(), e))?;
         fs::create_dir_all(store.definitions_dir())
             .map_err(|e| storage_err(&store.definitions_dir(), e))?;
+        fs::create_dir_all(store.heads_dir()).map_err(|e| storage_err(&store.heads_dir(), e))?;
         Ok(store)
     }
 
@@ -98,6 +99,81 @@ impl Store {
     /// rather than inside them.
     fn definitions_dir(&self) -> PathBuf {
         self.root.join("definitions")
+    }
+
+    /// The `heads/` subdirectory, one directory per publisher DID holding that
+    /// publisher's signed feed heads, one file per `head_seq`.
+    ///
+    /// Heads are kept out of `entries/` deliberately. A head commits to feed
+    /// entries, so filing it as one would either make it commit to itself or
+    /// leave a hole in the numbering.
+    fn heads_dir(&self) -> PathBuf {
+        self.root.join("heads")
+    }
+
+    /// A publisher's head directory.
+    ///
+    /// The DID is hex encoded rather than sanitised. A DID contains `:` and can
+    /// in principle contain anything else, and any lossy mapping (replacing bad
+    /// characters, truncating) risks two DIDs colliding onto one directory,
+    /// which would let one publisher's heads answer for another's. Hex is
+    /// unambiguous, reversible, and safe on every filesystem.
+    fn head_dir_for(&self, publisher_did: &str) -> PathBuf {
+        self.heads_dir().join(hex::encode(publisher_did.as_bytes()))
+    }
+
+    /// Store a signed feed head tree for a publisher at a given height.
+    pub fn write_head(&self, publisher_did: &str, head_seq: u64, tree_json: &str) -> Result<()> {
+        let dir = self.head_dir_for(publisher_did);
+        fs::create_dir_all(&dir).map_err(|e| storage_err(&dir, e))?;
+        write_atomically(&dir.join(entry_filename(head_seq)), tree_json.as_bytes())
+    }
+
+    /// A publisher's head at a given height, verbatim.
+    pub fn read_head(&self, publisher_did: &str, head_seq: u64) -> Result<Option<String>> {
+        let path = self
+            .head_dir_for(publisher_did)
+            .join(entry_filename(head_seq));
+        match fs::read_to_string(&path) {
+            Ok(c) => Ok(Some(c)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(storage_err(&path, e)),
+        }
+    }
+
+    /// Every height at which this publisher has a stored head, ascending.
+    pub fn head_seqs(&self, publisher_did: &str) -> Result<Vec<u64>> {
+        let dir = self.head_dir_for(publisher_did);
+        let rd = match fs::read_dir(&dir) {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(storage_err(&dir, e)),
+        };
+        let mut out = Vec::new();
+        for item in rd {
+            let item = item.map_err(|e| storage_err(&dir, e))?;
+            let path = item.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            if let Some(seq) = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.parse::<u64>().ok())
+            {
+                out.push(seq);
+            }
+        }
+        out.sort_unstable();
+        Ok(out)
+    }
+
+    /// The publisher's highest stored head, verbatim, with its height.
+    pub fn read_latest_head(&self, publisher_did: &str) -> Result<Option<(u64, String)>> {
+        let Some(top) = self.head_seqs(publisher_did)?.pop() else {
+            return Ok(None);
+        };
+        Ok(self.read_head(publisher_did, top)?.map(|tree| (top, tree)))
     }
 
     /// Replays every persisted entry in ascending `seq` order.

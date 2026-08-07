@@ -50,7 +50,7 @@ use aqua_rs_sdk_core::Aquafier;
 
 use crate::error::{RegistryError, Result};
 use crate::model::{
-    AliasRecord, DefinitionReceipt, FeedEntry, FeedPage, Receipt, RegistrationKind,
+    AliasRecord, DefinitionReceipt, FeedEntry, FeedPage, HeadReceipt, Receipt, RegistrationKind,
     RegistrationPayload, Resolution, ResolutionVia, Stats, TemplateRecord, VendorRecord,
 };
 use crate::name::{self, NameValidator};
@@ -273,6 +273,109 @@ impl Registry {
             .ok()
             .flatten()
             .is_some()
+    }
+
+    // ---- feed heads ---------------------------------------------------------
+
+    /// Accept a publisher's signed commitment to their own feed.
+    ///
+    /// Verified like any other submission: the tree must verify through core,
+    /// carry exactly one `feed_head` object, and be signed by exactly one DID
+    /// which must equal the `signer_did` it names. On top of that the registry
+    /// checks the head against its OWN view of that publisher's feed and
+    /// refuses one whose root does not match.
+    ///
+    /// That last check is a courtesy to the publisher, not a security control.
+    /// A subscriber recomputes the root itself and does not rely on the
+    /// registry having done so, precisely because the registry is the party a
+    /// feed head exists to constrain. What it does buy is that a publisher who
+    /// builds a head from the wrong entry order finds out at submit time rather
+    /// than through a subscriber failing closed days later.
+    pub async fn submit_head(&self, body: &str) -> Result<HeadReceipt> {
+        let head = crate::feedhead::verify_head(&self.aquafier, body, None)
+            .await
+            .map_err(|e| RegistryError::HeadRejected(e.to_string()))?;
+
+        let tips = self.publisher_entry_tips(&head.publisher_did);
+        if tips.is_empty() {
+            return Err(RegistryError::HeadRejected(format!(
+                "publisher {} has no feed entries here to commit to",
+                head.publisher_did
+            )));
+        }
+        crate::feedhead::check_against_entries(&head, &tips)
+            .map_err(|e| RegistryError::HeadRejected(e.to_string()))?;
+
+        // A head may not go backwards, and two heads at one height must agree.
+        if let Some((prev_seq, prev_tree)) = self.store.read_latest_head(&head.publisher_did)? {
+            let previous = crate::feedhead::verify_head(&self.aquafier, &prev_tree, None)
+                .await
+                .map_err(|e| RegistryError::CorruptStore {
+                    path: format!("heads/{}/{prev_seq}", head.publisher_did),
+                    reason: e.to_string(),
+                })?;
+            crate::feedhead::check_against_previous(
+                &head,
+                Some(previous.head_seq),
+                Some(&previous.merkle_root),
+            )
+            .map_err(|e| RegistryError::HeadRejected(e.to_string()))?;
+        }
+
+        let stored = self
+            .store
+            .read_head(&head.publisher_did, head.head_seq)?
+            .is_none();
+        if stored {
+            self.store
+                .write_head(&head.publisher_did, head.head_seq, body)?;
+        }
+
+        Ok(HeadReceipt {
+            publisher_did: head.publisher_did,
+            head_seq: head.head_seq,
+            merkle_root: head.merkle_root,
+            tree_tip: head.tree_tip,
+            stored,
+        })
+    }
+
+    /// The publisher's highest stored feed head, verbatim.
+    pub fn latest_head(&self, publisher_did: &str) -> Result<Option<String>> {
+        Ok(self
+            .store
+            .read_latest_head(publisher_did)?
+            .map(|(_, tree)| tree))
+    }
+
+    /// A publisher's head at a specific height, verbatim.
+    pub fn head_at(&self, publisher_did: &str, head_seq: u64) -> Result<Option<String>> {
+        self.store.read_head(publisher_did, head_seq)
+    }
+
+    /// Every height at which this publisher has a stored head, ascending.
+    pub fn head_seqs(&self, publisher_did: &str) -> Result<Vec<u64>> {
+        self.store.head_seqs(publisher_did)
+    }
+
+    /// A publisher's own entry tips, in feed order.
+    ///
+    /// This is the sequence a feed head commits to: ordinal 1 is the first
+    /// element. Registry-global `seq` gaps caused by other publishers are
+    /// closed here, which is what makes a head portable to a mirror that
+    /// assigned different global numbers.
+    pub fn publisher_entry_tips(&self, publisher_did: &str) -> Vec<String> {
+        let index = self.index.read().expect("index lock poisoned");
+        index
+            .feed_by_did
+            .get(publisher_did)
+            .map(|seqs| {
+                seqs.iter()
+                    .filter_map(|s| index.entries.get((*s - 1) as usize))
+                    .map(|e| e.tree_tip.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     // ---- lookups ------------------------------------------------------------

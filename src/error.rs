@@ -150,6 +150,10 @@ pub enum RegistryError {
     #[error("definition hashes to {0}, which no template registration claims")]
     DefinitionNotRegistered(String),
 
+    /// A feed head was refused.
+    #[error("feed head rejected: {0}")]
+    HeadRejected(String),
+
     // ---- lookups ------------------------------------------------------------
     /// Nothing found for the requested key.
     #[error("not found: {0}")]
@@ -199,6 +203,8 @@ impl RegistryError {
             | RegistryError::DefinitionTooLarge { .. }
             | RegistryError::DefinitionCarriesWasm(_) => 400,
 
+            RegistryError::HeadRejected(_) => 422,
+
             RegistryError::TreeNotVerified(_)
             | RegistryError::Unsigned
             | RegistryError::MultipleSigners(_) => 422,
@@ -246,6 +252,7 @@ impl RegistryError {
             RegistryError::NameCollision(_) => "NAME_COLLISION",
             RegistryError::UnknownSupersedes { .. } => "UNKNOWN_SUPERSEDES",
             RegistryError::AlreadySuperseded(_) => "ALREADY_SUPERSEDED",
+            RegistryError::HeadRejected(_) => "HEAD_REJECTED",
             RegistryError::DefinitionTooLarge { .. } => "DEFINITION_TOO_LARGE",
             RegistryError::DefinitionCarriesWasm(_) => "DEFINITION_CARRIES_WASM",
             RegistryError::DefinitionNotRegistered(_) => "DEFINITION_NOT_REGISTERED",
