@@ -167,3 +167,34 @@ the section clears).
       `cargo fmt --all` reaches into local path dependencies, so the workflow
       uses plain `cargo fmt --check`; and RUSTFLAGS=-D warnings cannot be set
       because the sibling core emits its own warnings.
+- [ ] R18. The `test` job cannot pass as written: cargo refuses to resolve a
+      manifest whose path dependency is missing on disk, even for builds that
+      never compile it, and the job checks out only aqua-rs-sdk-core while
+      `Cargo.toml` lists the private `../aqua-rs-sdk` as a path
+      dev-dependency. Empirically proven 2026-08-08 during the Docker image
+      work: `cargo build --bin registryd` inside a container with only the
+      core sibling fails with "failed to load source for dependency
+      aqua-rs-sdk" (the ci.yml comment claiming the job was verified with
+      only the public sibling is wrong). `docker/build.sh` works around it
+      by stripping `[dev-dependencies]` from the staged manifest, the same
+      trimming `cargo publish` performs. Fix options: have the test job
+      apply the same stripping before building (mirrors the published-crate
+      view), or vendor a stub `../aqua-rs-sdk` manifest for the job, or move
+      the dev-dependency behind the secret-gated job entirely. Until fixed,
+      assume the default CI job is red and do not read its state as a
+      verdict on the code.
+- [ ] R19. Aqua-service identity conformance for the deployed registry.
+      `registryd` has no service key and no `/.well-known/aqua-identity`
+      (agent-customer-portal is the reference: JSON document with
+      `server_did` plus a signed `service_claim_server` Aqua tree, 90-day
+      validity, renewed on restart). The service_claim family is
+      identity-module territory that aqua-rs-sdk-core deliberately does not
+      ship (unsupported lookup), so the registry cannot mint or verify such
+      claims natively. Scoped approach: mint the claim out of band with the
+      full SDK under a dedicated service key (distinct from the publisher
+      key), mount the resulting document, serve it verbatim from a new
+      route (e.g. `REGISTRY_IDENTITY_FILE`). Keeps registryd data-only.
+- [ ] R20. Publish the Docker image to GHCR once the org PAT is rotated
+      (`docker/build.sh` builds and tags; the 2026-08-08 deployment to
+      aqua-registry.inblock.io shipped the image over SSH as a local image,
+      which also means watchtower does not auto-update it).
