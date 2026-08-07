@@ -76,23 +76,35 @@
 #![warn(missing_docs)]
 
 pub mod error;
+pub mod import;
 pub mod model;
 pub mod name;
 pub mod publisher;
 pub mod registry;
 pub mod store;
 pub mod templates;
+pub mod trust;
 pub mod verify;
 
 #[cfg(feature = "server")]
 pub mod http;
 
+#[cfg(feature = "client")]
+pub mod httpclient;
+#[cfg(feature = "client")]
+pub mod subscribe;
+
 pub use error::{RegistryError, Result};
+pub use import::{ImportRejection, ImportStore, ImportedTemplate};
 pub use model::{
-    AliasRecord, AliasRegistration, FeedEntry, FeedPage, Receipt, RegistrationKind,
-    RegistrationPayload, Resolution, ResolutionVia, Stats, TemplateRecord, TemplateRegistration,
-    VendorRecord, VendorRegistration,
+    AliasRecord, AliasRegistration, DefinitionReceipt, FeedEntry, FeedPage, Receipt,
+    RegistrationKind, RegistrationPayload, Resolution, ResolutionVia, Stats, TemplateRecord,
+    TemplateRegistration, VendorRecord, VendorRegistration,
 };
 pub use name::{NameError, NameValidator};
 pub use registry::Registry;
 pub use store::Store;
+pub use trust::{ImportPolicy, PinDecision, PinMode};
+
+#[cfg(feature = "client")]
+pub use subscribe::{Subscriber, SubscriptionState, SyncReport};

@@ -21,10 +21,19 @@ name = "publish-audit-set"
 path = "src/bin/publish-audit-set.rs"
 required-features = ["server"]
 
+[[bin]]
+name = "subscribe"
+path = "src/bin/subscribe.rs"
+required-features = ["client"]
+
 [features]
-default = ["server"]
+default = ["server", "client"]
 # HTTP surface: the axum router and the registryd binary.
 server = ["dep:axum", "dep:tokio", "dep:tower"]
+# Consumer side: the HTTP client, the subscriber, and the subscribe binary.
+# Separate from `server` so a consumer that only imports templates does not
+# have to build axum.
+client = ["dep:hyper", "dep:hyper-util", "dep:http-body-util", "dep:bytes", "dep:tokio"]
 
 [dependencies]
 aqua-rs-sdk-core = { path = "../aqua-rs-sdk-core", features = ["native"] }
@@ -42,8 +51,20 @@ unicode-script = "0.5"
 
 # Optional, `server` feature only.
 axum = { version = "0.8", optional = true }
-tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "net", "signal"], optional = true }
 tower = { version = "0.5", optional = true }
+
+# Optional, `client` feature only. All three already arrive under axum, so the
+# `client` feature adds no new dependency subtree, only direct access to it.
+# hyper's low-level http1 client is used rather than a batteries-included one:
+# a subscriber polls a handful of endpoints on one origin, and every feature not
+# present is one that cannot go wrong in a security-relevant path.
+hyper = { version = "1", features = ["client", "http1"], optional = true }
+hyper-util = { version = "0.1", features = ["tokio"], optional = true }
+http-body-util = { version = "0.1", optional = true }
+bytes = { version = "1", optional = true }
+
+# Shared by both networking features.
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "net", "signal"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "net", "time"] }
