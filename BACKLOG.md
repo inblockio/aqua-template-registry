@@ -57,13 +57,38 @@ the section clears).
 
 ## Trust and integrity
 
-- [ ] R10. Signed feed head. A registry can currently withhold or reorder feed
-      entries: nothing in a feed page is signed by the publisher, so a
-      consumer cannot detect a gap or a rollback. Have publishers periodically
-      sign a commitment to their own feed (entry count plus a Merkle root over
-      the entries) and have subscribers verify it. This is the one class of
-      attack the import chain does not close, and it is documented as a known
-      limitation in the README's trust-model section.
+- [x] R10. (2026-08-07, `src/feedhead.rs`, `src/templates/feed_head.json`,
+      `tests/feed_head_security.rs`, `tests/feed_head_loop.rs`) Signed feed
+      head. Publishers now sign a commitment to their own feed (a count of
+      their entries plus a Merkle root over them) as a `feed_head` Aqua tree,
+      and subscribers verify it on every sync and fail closed.
+
+      Detected: withholding (registry serves fewer entries than a verified
+      head covers), reordering and substitution (recomputed root differs),
+      rollback (a head below one already verified), equivocation (two roots at
+      one height), and disappearance (a head was verified before, none is
+      served now). On any of these nothing is imported and the persisted
+      cursor does not advance.
+
+      Leaf construction v1, documented byte for byte in the README:
+      `leaf_n = SHA3-256(0x00 || ascii(decimal(n)) || 0x1F || ascii(tip_n))`
+      over publisher-local ordinals, rooted with core's `merkle_root`. Ordinals
+      rather than registry-global `seq` so a head is portable to a mirror.
+
+      Remaining, and now documented rather than implied: bootstrapping (a
+      publisher with no head yet is followed and reported), a fresh subscriber
+      cannot tell a current head from a replayed slightly-stale one, there is
+      no freshness or liveness guarantee, and collusion with the publisher's
+      own key is out of scope by definition.
+- [ ] R13. Head freshness. A feed head says "at least N entries existed when
+      I signed this", never "nothing newer exists", and it carries no expiry.
+      A registry can serve a genuine but months-old head indefinitely and a
+      fresh subscriber cannot tell. Options: a publisher-declared maximum head
+      age that subscribers enforce, or comparing heads across mirrors.
+- [ ] R14. Cross-registry corroboration. A subscriber talks to the registries
+      it is configured with and never compares them. Fetching the same
+      publisher's head from two independent registries would catch a single
+      registry replaying a stale head, which is the main gap R10 leaves.
 - [ ] R11. Trust-policy provenance. `allowed_publishers` entries are written
       by hand today. Consider recording where a DID came from (out-of-band
       exchange, a signed introduction, a directory) so an operator reviewing

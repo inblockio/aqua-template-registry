@@ -162,6 +162,10 @@ Everything is `application/json`, with the single exception of `GET /health`, wh
 | POST | `/definitions` | Upload a template definition body (unsigned, content addressed) |
 | GET | `/definitions` | List every template hash that has a body on hand |
 | GET | `/definitions/{hash}` | The stored definition body, verbatim, rehashed on read |
+| POST | `/heads` | Submit a publisher's signed feed head |
+| GET | `/publishers/{did}/head` | The publisher's highest signed feed head, verbatim |
+| GET | `/publishers/{did}/heads` | Every height at which this publisher has a stored head |
+| GET | `/publishers/{did}/heads/{seq}` | A publisher's head at a specific height, verbatim |
 | GET | `/publishers/{did}/vendors` | Every vendor namespace owned by a publisher DID |
 | GET | `/publishers/{did}/templates` | Every template registered by a publisher DID, newest first |
 | GET | `/publishers/{did}/aliases` | Every alias registered by a publisher DID |
@@ -197,6 +201,7 @@ Error codes, from `RegistryError::code()` and `RegistryError::status()` in `src/
 | `DEFINITION_TOO_LARGE` | 400 | Definition body over the 262144 byte cap |
 | `DEFINITION_CARRIES_WASM` | 400 | Definition body declares a `verification` section |
 | `DEFINITION_NOT_REGISTERED` | 404 | Body hashes to something no registration claims |
+| `HEAD_REJECTED` | 422 | A submitted feed head failed verification (see `src/feedhead.rs::HeadRejection`) |
 | `DUPLICATE_TEMPLATE` | 409 | This template hash is already registered |
 | `DUPLICATE_ALIAS` | 409 | This qualified alias name is already registered |
 | `NAME_COLLISION` | 409 | A qualified name is claimed by both an alias and a template |
@@ -222,20 +227,64 @@ They prove a namespace is internally consistent. They do not prove identity. Not
 
 So the registry deliberately does not decide who is trustworthy. That decision belongs to the consumer, and it is made explicitly: see "Importing: the consumer side" below, where a committed trust policy names the publisher DIDs a given consumer will accept and pins each template to a specific hash. Every default there is deny.
 
-### Known limitation: the registry can lie by omission
+### Detecting a registry that lies by omission
 
-A consumer re-derives everything it acts on from signed trees and content-addressed bodies, so a hostile or buggy registry cannot forge a publisher, invent a name, or substitute a template body. All of those are caught.
+A consumer re-derives everything it acts on from signed trees and content-addressed bodies, so a hostile registry cannot forge a publisher, invent a name, or substitute a template body. Those were always caught.
 
-What it can still do is **withhold or reorder**. The feed is served by the registry, and nothing in a feed page is signed by the publisher. A registry can therefore:
+What it could also do, until now, was withhold, delay, or reorder feed entries, because nothing in a feed page is publisher-signed. For a template registry the practical harm is pinning a consumer to a superseded template long after a fix was published.
 
-- omit entries, so a subscriber never learns a template was published,
-- serve a stale view, so a subscriber does not see a newer version,
-- delay entries, so a subscriber acts on an old pin longer than it should,
-- reorder entries relative to publication.
+Publishers now sign a feed head: a commitment to their own feed (how many of their entries exist, and a Merkle root over them). A subscriber verifies it on every sync and fails closed.
 
-None of that lets it make a consumer accept something the publisher did not sign. It does let it prevent a consumer from seeing something the publisher did sign. A subscriber pinned to specific hashes is largely insulated (it was not going to accept an unpinned surprise anyway), but a subscriber running with `--approve-new` is trusting the registry's ordering as well as the publisher's key.
+What is now detected:
 
-The fix is a signed feed head: the publisher periodically signs a commitment to their own feed (a count and a Merkle root over the entries), which a consumer checks to detect gaps and rollbacks. That is future work, tracked in `BACKLOG.md`. Until then, a consumer that needs this guarantee should compare what several independent registries serve for the same publisher DID, or obtain the publisher's set out of band, as `seed/audit-set-v1/` allows.
+- **Withholding.** The registry serves fewer entries than a verified head covers.
+- **Reordering or substitution.** The recomputed root does not match the signed one.
+- **Rollback.** A head at a lower height than one already verified.
+- **Equivocation.** Two different roots signed at the same height.
+- **Disappearance.** A head was verified before and the registry now serves none.
+
+On any of those, nothing is imported and the persisted cursor does not advance (`src/subscribe.rs`, `Subscriber::sync`).
+
+What remains, honestly:
+
+- **Bootstrapping.** A publisher who has never signed a head is followed anyway, tolerated and reported on every sync, because refusing would make the feature impossible to adopt. Until the first head exists, withholding is undetectable. A subscriber that has seen a head once will never silently go back to this state (that is the disappearance check above).
+- **First contact.** A fresh subscriber has no history, so it cannot tell a current head from a slightly stale one that a registry replayed. It can only detect a head going backwards relative to what it has already seen. Comparing against a mirror, or obtaining the head out of band, closes that.
+- **Collusion between a registry and the publisher's own signing key** is out of scope by definition. The key is the authority for that namespace, so a publisher can always sign a head that omits their own entries. A subscriber trusting that DID has already accepted this.
+- **Freshness in general.** A head says "at least N entries existed when I signed this", not "nothing has been published since". There is no liveness guarantee and no expiry; `covered_at` is informational.
+
+### The feed head construction
+
+A head covers the publisher's OWN feed entries, numbered from 1 in registry sequence order. The construction uses this publisher-local ordinal rather than the registry-global `seq`: the global number depends on what other publishers did, so a head built from it would only verify against the one registry that assigned it. Ordinals make a head portable, so the same signed head verifies against a mirror.
+
+For the n-th covered entry, with `tip_n` that entry's registration tree tip hash, the lowercase `0x`-prefixed multihash string the registry stores:
+
+```text
+preimage_n = ascii(decimal(n)) || 0x1F || ascii(lowercase(tip_n))
+leaf_n     = SHA3-256(0x00 || preimage_n)
+root       = merkle_root([leaf_1 .. leaf_N], SHA3-256)
+```
+
+`0x1F` is ASCII Unit Separator. It cannot occur in either field (one side is decimal digits, the other is `0x` plus lowercase hex), so the concatenation is unambiguous and no length prefix is needed. Without a separator, `(1, "0x12...")` and `(11, "0x2...")` could collide.
+
+`0x00` is the RFC 6962 leaf prefix, applied by core's `batch_leaf_hash`; internal nodes get `0x01` via core's `merkle_root`, and odd nodes are promoted rather than duplicated. This matches the conventions `audit_round_anchor` already uses.
+
+The ordinal is inside the leaf, so the tree commits to each entry's position as well as its content. A pure reorder changes the root, which a construction over tips alone would miss.
+
+`leaf_version` exists so a verifier that does not implement a construction refuses the head rather than guessing at it.
+
+### The feed head template
+
+The `feed_head` template is defined by this project, data only, no `verification` section, no `derives_from`. No SDK defines a feed head.
+
+Its frozen hash (bare SHA3-256 digest; on the wire core wraps it as a multihash with a `0x1620` prefix):
+
+```text
+feed-head: 0x77c13274ab93b2707017db0ba8e5b872fce94e86ba54064235bcb528d1879cb9
+```
+
+Payload fields: `signer_did`, `head_seq`, `merkle_root`, `leaf_version`, `covered_at`.
+
+The nonce and `local_timestamp` in `src/templates/feed_head.json` are pinned rather than generated, because both feed into the hash: leaving either to chance would mint a new type on every build.
 
 ## Names and versions
 
@@ -310,11 +359,14 @@ seed/audit-set-v1/
   02-template-audit_artifact.json    eleven signed template registrations,
   ...                                numbered in registration order
   12-template-audit_session_close.json
+  13-feed-head.json                  the signed feed head covering all 12 registrations
   definitions/*.json                 the eleven template bodies, byte-identical to core
   manifest.json                      name, hash, DID, tip, and file names
 ```
 
 The signed trees are committed rather than regenerated because each one carries a nonce and a timestamp: re-running the publisher produces different bytes with the same meaning. Committing them means the tests and any consumer exercise the exact bytes that were published.
+
+The shipped set includes a signed feed head, `13-feed-head.json`, covering all 12 registrations (`head_seq: 12`), with Merkle root `0x6c143d6dbe550f6b0a08c41804341fec99f93091948131173aa930ca199e711e` (`manifest.json`'s `feed_head` block).
 
 To load the set into a running `registryd`, POST each tree in manifest order (the vendor registration must land first, since the other eleven write into the namespace it claims):
 
@@ -357,7 +409,7 @@ The ignored test is the staleness check. Core legitimately moves ahead of a publ
 
 ## Importing: the consumer side
 
-Subscribing is the easy half. Deciding what to accept is the half that matters. A consumer runs `subscribe`, which polls a publisher's feed, downloads each registration and its definition body, puts both through a verification chain, and files what passes into a local store.
+Subscribing is the easy half. Deciding what to accept is the half that matters. A consumer runs `subscribe`, which polls a publisher's feed, fetches and verifies the publisher's signed feed head before importing anything, downloads each registration and its definition body, puts both through a verification chain, and files what passes into a local store. A head failure (withholding, rollback, equivocation, disappearance, or a root mismatch) means nothing is imported and the cursor does not move; see "Detecting a registry that lies by omission" above.
 
 ### The trust policy
 
@@ -509,6 +561,8 @@ cargo test --test audit_set -- --ignored    # seed staleness against ../aqua-rs-
 | `tests/audit_set.rs` | Replays the committed seed set, drift guard against its own definitions |
 | `tests/http_stack.rs` | Full stack over real HTTP against a spawned `registryd`, including restart |
 | `tests/import_security.rs` | The negative suite: every import control asserted to deny |
+| `tests/feed_head_security.rs` | The feed head negative suite: withholding, reordering, rollback, equivocation, and forged heads |
+| `tests/feed_head_loop.rs` | Feed heads end to end: a staged registry withholding, rolling back, and dropping a head |
 | `tests/full_loop.rs` | Publish, subscribe, import, use an imported template, pick up a delta |
 | `tests/cross_sdk.rs` | Ignored: hash equality against the full `aqua-rs-sdk` |
 
@@ -537,7 +591,8 @@ The two networking features are separate: `--no-default-features --features clie
 - No on-chain registry. Registration state lives on disk in one service, not in a contract.
 - No SWARM or other content-addressed transport. Storage is local, retrieval is HTTP.
 - No trust store in the registry. Trust is the consumer's decision, expressed in a local policy file (see "Importing: the consumer side"). The spec's section 4 domain-scoped trust store, with ENS or DNS resolution of a vendor name to a DID, is not implemented: a publisher DID is written down by hand, not resolved.
-- No signed feed head, so a registry can withhold or reorder entries. See "Known limitation" above.
+- No freshness or liveness guarantee. A signed feed head says at least N entries existed when it was signed, not that nothing newer exists; see "Detecting a registry that lies by omission" above.
+- No cross-registry gossip or mirror comparison. A subscriber talks only to the registries it chooses; nothing here reconciles two registries' views of the same publisher automatically.
 - No transport security in the client. `registryd` binds loopback and expects a reverse proxy; everything a subscriber acts on is checked after it arrives, so TLS is confidentiality and availability, not integrity.
 - No plugin or WASM module distribution. The spec's `plugin-registration` template is not implemented, and `aqua-rs-sdk-core` has no WASM runtime to run a plugin against anyway.
 - No federation or replication between registries. A consumer polls whichever registries it chooses to.
