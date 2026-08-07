@@ -1,0 +1,223 @@
+name: CI
+
+# Push to main and every pull request. There is deliberately no branch
+# filter on pull_request: a contributor's branch name should never decide
+# whether CI runs.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The default job. Builds and tests this crate on its own, using only the
+  # public aqua-rs-sdk-core sibling. Runs on every push and PR, no gating.
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aqua-template-registry
+    steps:
+      - name: Check out aqua-template-registry
+        uses: actions/checkout@v7
+        with:
+          path: aqua-template-registry
+
+      # Cargo.toml declares `aqua-rs-sdk-core` as a PATH dependency at
+      # `../aqua-rs-sdk-core` (features = ["native"]), which is how this
+      # crate gets tree parsing, signature verification, and template
+      # hashing without re-implementing any of it (see README, "Relationship
+      # to aqua-rs-sdk-core"). A path dependency resolves relative to this
+      # checkout on disk, so nothing in this job builds, not even `cargo
+      # check`, until a checkout of that repo exists one level up. The
+      # `path:` input below is what makes that true: both checkouts land
+      # under the same $GITHUB_WORKSPACE, side by side, so `../aqua-rs-sdk-core`
+      # from inside `aqua-template-registry/` resolves exactly the way it
+      # does on a contributor's machine.
+      - name: Check out sibling aqua-rs-sdk-core (path dependency, ../aqua-rs-sdk-core)
+        uses: actions/checkout@v7
+        with:
+          repository: inblockio/aqua-rs-sdk-core
+          path: aqua-rs-sdk-core
+
+      # Pinned by commit SHA, not by the mutable `stable` branch tag: this
+      # action publishes a branch per Rust release (here "1.95.0"), and a
+      # branch, unlike a release tag, can still move. Pinning the SHA freezes
+      # both the action code and the exact rustc it installs. 1.95.0 is the
+      # toolchain the committed Cargo.lock was resolved under and the one
+      # every command in this workflow was verified against locally; letting
+      # this float on the `stable` channel would mean a brand-new Rust
+      # release (with its own new clippy lints) could turn the `-D warnings`
+      # step red on a day nobody touched this repo. When bumping, resolve the
+      # new version's branch tip on https://github.com/dtolnay/rust-toolchain
+      # and update the SHA and the trailing comment together.
+      - name: Install Rust 1.95.0 (pinned, see comment)
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      # Cargo.lock is committed at the repo root, so the cache key is
+      # derived from it rather than from Cargo.toml: a lockfile hash changes
+      # exactly when a resolved dependency version changes, which is the
+      # right cache-invalidation signal. (If this repo ever stops committing
+      # Cargo.lock, key on Cargo.toml instead and drop --locked below.)
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            aqua-template-registry/target
+          key: ${{ runner.os }}-cargo-1.95.0-${{ hashFiles('aqua-template-registry/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.95.0-
+
+      # Plain `cargo fmt --check`, not `--all`: cargo-fmt's `--all` flag also
+      # formats local PATH dependencies, not only workspace members. Verified
+      # locally: `cargo fmt --all -- --check` run from this repo reached into
+      # ../aqua-rs-sdk-core and ../aqua-rs-sdk and reported formatting diffs
+      # there, even though `cargo metadata` shows this repo as a one-member
+      # workspace (neither sibling opts into this repo's workspace; they each
+      # declare their own `[workspace]`). Neither sibling is ours to
+      # reformat, so gating this step on their formatting would fail this
+      # repo's CI for a reason entirely outside this repo. Without `--all`,
+      # plain `cargo fmt --check` already covers every target of this
+      # package alone (lib, bins, tests, examples), which is all this step
+      # is meant to check.
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      # `-D warnings` is a trailing clippy argument, which cargo applies only
+      # to the package(s) actually selected for linting, here `-p
+      # aqua-template-registry`, not to path dependencies compiled as
+      # ordinary deps for that build. Verified locally with both forms: the
+      # scoped `-p aqua-template-registry` and the unscoped
+      # `cargo clippy --all-targets --all-features -- -D warnings` produced
+      # byte-identical results. aqua-rs-sdk-core's and aqua-rs-sdk's own
+      # warnings (a few unused imports and one dead function, as of this
+      # writing) stayed plain warnings under both forms and never failed the
+      # build; the only denial that ever fired was on this crate's own code.
+      # `-p` is kept anyway, not because it changed the outcome today, but
+      # because it documents on purpose, rather than by accident of there
+      # being only one workspace member right now, that the denial is scoped
+      # to code this repo owns.
+      #
+      # For the same reason, `RUSTFLAGS: -D warnings` is deliberately NOT set
+      # anywhere in this workflow. RUSTFLAGS is passed to every rustc
+      # invocation cargo makes for the whole build, including path
+      # dependencies, not just the linted package. Verified locally:
+      # `RUSTFLAGS="-D warnings" cargo build --all-targets` fails the build
+      # inside aqua-rs-sdk-core itself (an unused-import and a dead-code
+      # warning there get promoted to hard errors), which would make this
+      # repo's CI red over code it does not control and cannot fix here.
+      - name: cargo clippy -p aqua-template-registry
+        run: cargo clippy -p aqua-template-registry --all-targets --all-features -- -D warnings
+
+      - name: cargo build --all-targets --locked
+        run: cargo build --all-targets --locked
+
+      - name: cargo test
+        run: cargo test
+
+      # Feature matrix (Cargo.toml [features]; README "Dependencies" table):
+      # `server` and `client` are independent, additive features and default
+      # = both. Each combination gets its own step so a break in one
+      # combination does not hide behind the others passing.
+      - name: cargo check --no-default-features
+        run: cargo check --lib --no-default-features
+
+      - name: cargo check --no-default-features --features client
+        run: cargo check --lib --no-default-features --features client
+
+      - name: cargo check --no-default-features --features server
+        run: cargo check --lib --no-default-features --features server
+
+  # Runs the two #[ignore]d suites that need the full aqua-rs-sdk as a second
+  # sibling (tests/cross_sdk.rs, tests/audit_set.rs; see their module doc
+  # comments for why they are ignored by default). aqua-rs-sdk may be a
+  # private repository, unlike aqua-rs-sdk-core, so this job cannot assume it
+  # is reachable.
+  #
+  # Chosen handling: gate the WHOLE job on a secret's presence, rather than
+  # `continue-on-error: true` on the job. continue-on-error would let the job
+  # attempt the checkout every run, and would also keep silently downgrading
+  # a genuine test regression to a non-blocking warning forever, even after
+  # the SDK becomes reachable, since the same flag that tolerates a missing
+  # repo also tolerates a real failure once the repo is there. Gating on a
+  # secret instead means: no secret configured (for example, a fork PR from a
+  # contributor with no access) skips this job entirely, nothing is reported
+  # and nothing is expected to be green; secret configured, the checkout is
+  # expected to succeed and the two test steps below run with no
+  # continue-on-error of their own, so a real failure is a real red job.
+  #
+  # AQUA_RS_SDK_TOKEN must be a PAT (or deploy key exposed as a token) with
+  # read access to inblockio/aqua-rs-sdk, set as a repository or
+  # organization secret. Until that secret exists, this job is a no-op.
+  cross-sdk:
+    name: cross-sdk (needs AQUA_RS_SDK_TOKEN secret)
+    runs-on: ubuntu-latest
+    if: ${{ secrets.AQUA_RS_SDK_TOKEN != '' }}
+    defaults:
+      run:
+        working-directory: aqua-template-registry
+    steps:
+      - name: Check out aqua-template-registry
+        uses: actions/checkout@v7
+        with:
+          path: aqua-template-registry
+
+      - name: Check out sibling aqua-rs-sdk-core (path dependency, ../aqua-rs-sdk-core)
+        uses: actions/checkout@v7
+        with:
+          repository: inblockio/aqua-rs-sdk-core
+          path: aqua-rs-sdk-core
+
+      # Second sibling. Cargo.toml lists `aqua-rs-sdk` as a path
+      # DEV-dependency at `../aqua-rs-sdk` (features = ["native"]), used only
+      # by tests/cross_sdk.rs, "for the cross-SDK compatibility check". It
+      # may be private, hence the token; see the job-level comment above for
+      # why this whole job, rather than this one step, is what tolerates that
+      # repo being unreachable.
+      - name: Check out sibling aqua-rs-sdk (path dev-dependency, ../aqua-rs-sdk)
+        uses: actions/checkout@v7
+        with:
+          repository: inblockio/aqua-rs-sdk
+          path: aqua-rs-sdk
+          token: ${{ secrets.AQUA_RS_SDK_TOKEN }}
+
+      - name: Install Rust 1.95.0 (pinned, see comment in the test job)
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            aqua-template-registry/target
+          key: ${{ runner.os }}-cargo-1.95.0-cross-sdk-${{ hashFiles('aqua-template-registry/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.95.0-cross-sdk-
+
+      # tests/cross_sdk.rs needs both siblings: it builds registrations with
+      # aqua-rs-sdk-core and verifies them under the full aqua-rs-sdk to prove
+      # the vendored registration templates are byte-identical to the SDK's
+      # built-ins. No continue-on-error here or below: the job-level `if:`
+      # above is what makes SDK unavailability non-fatal, not this step.
+      - name: cargo test --test cross_sdk -- --ignored
+        run: cargo test --test cross_sdk -- --ignored
+
+      # tests/audit_set.rs's single #[ignore]d test only reads a neighboring
+      # aqua-rs-sdk-core checkout (it does not touch the full aqua-rs-sdk at
+      # all; see the test's own doc comment: "checks the seed against the
+      # neighbouring aqua-rs-sdk-core checkout"). It runs in this job rather
+      # than in `test` because it, too, is an ignored, deliberately-run-only
+      # suite, and grouping both ignored suites together keeps `test` itself
+      # always runnable from just the public sibling.
+      - name: cargo test --test audit_set -- --ignored
+        run: cargo test --test audit_set -- --ignored
