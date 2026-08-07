@@ -27,6 +27,7 @@ use aqua_rs_sdk_core::Aquafier;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{RegistryError, Result};
+use crate::feedhead::{self, HeadRejection, VerifiedHead};
 use crate::httpclient::RegistryClient;
 use crate::import::{self, ImportRejection, ImportStore, ImportedTemplate, TrustedVendor};
 use crate::model::{FeedPage, RegistrationKind};
@@ -46,6 +47,18 @@ pub struct SubscriptionState {
     pub cursor: u64,
     /// Unix seconds of the last successful poll.
     pub last_polled_at: u64,
+    /// Highest `head_seq` of a feed head verified from this publisher.
+    ///
+    /// `None` means none has ever been seen, which is the bootstrapping state.
+    /// Once this is `Some`, a registry that stops serving a head is failing,
+    /// not bootstrapping, so this field is what makes head disappearance
+    /// detectable at all. Defaulted on load so cursor files written before feed
+    /// heads existed still parse, and correctly start out bootstrapping.
+    #[serde(default)]
+    pub head_seq: Option<u64>,
+    /// Merkle root of the head at `head_seq`, for equivocation detection.
+    #[serde(default)]
+    pub head_root: Option<String>,
 }
 
 impl SubscriptionState {
@@ -57,6 +70,8 @@ impl SubscriptionState {
             publisher_did: publisher_did.to_string(),
             cursor: 0,
             last_polled_at: 0,
+            head_seq: None,
+            head_root: None,
         }
     }
 
@@ -118,6 +133,62 @@ impl SubscriptionState {
     }
 }
 
+/// Why a sync stopped.
+///
+/// Head failures are their own variant because they are categorically
+/// different from an entry that would not import. A rejected entry is one
+/// template the subscriber declined; a failed head means the whole view the
+/// registry just served cannot be trusted, so nothing is imported and the
+/// cursor does not move.
+#[derive(Debug, thiserror::Error)]
+pub enum SyncError {
+    /// The publisher's signed feed head did not check out.
+    #[error("feed head check failed: {0}")]
+    Head(#[from] HeadRejection),
+    /// Transport, storage, or policy error.
+    #[error(transparent)]
+    Registry(#[from] RegistryError),
+}
+
+impl SyncError {
+    /// Short stable label for logs and CLI output.
+    pub fn code(&self) -> &'static str {
+        match self {
+            SyncError::Head(h) => h.code(),
+            SyncError::Registry(_) => "SYNC_ERROR",
+        }
+    }
+}
+
+/// What the feed head said about this sync.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HeadStatus {
+    /// The publisher has never signed a head, and none was ever seen before.
+    ///
+    /// Tolerated so a publisher can be followed before they adopt feed heads,
+    /// but reported on every sync: until a head exists, withholding and
+    /// reordering are undetectable and the subscriber is back to trusting the
+    /// registry's word about what was published.
+    Bootstrapping,
+    /// A head verified and the entries on hand reproduce its root.
+    Verified(VerifiedHead),
+}
+
+impl HeadStatus {
+    /// The verified head, if there was one.
+    pub fn verified(&self) -> Option<&VerifiedHead> {
+        match self {
+            HeadStatus::Verified(h) => Some(h),
+            HeadStatus::Bootstrapping => None,
+        }
+    }
+
+    /// True when this sync ran without a signed commitment to check against.
+    pub fn is_bootstrapping(&self) -> bool {
+        matches!(self, HeadStatus::Bootstrapping)
+    }
+}
+
 /// One entry that did not import, and why.
 #[derive(Debug, Clone)]
 pub struct Rejected {
@@ -144,6 +215,8 @@ pub struct SyncReport {
     pub newly_pinned: Vec<String>,
     /// Cursor after the sync.
     pub cursor: u64,
+    /// What the publisher's signed feed head said.
+    pub head: Option<HeadStatus>,
 }
 
 impl SyncReport {
@@ -212,9 +285,27 @@ impl Subscriber {
     /// independently, from the registry's `/vendors/{name}/tree` endpoint, so
     /// the namespace-owner check is made against a DID recovered from a
     /// signature rather than against the registry's derived vendor record.
-    pub async fn sync(&mut self, mode: PinMode) -> Result<SyncReport> {
+    pub async fn sync(&mut self, mode: PinMode) -> std::result::Result<SyncReport, SyncError> {
+        // ---- 1. collect the publisher's whole feed, in order ---------------
+        //
+        // The full feed is walked from the beginning rather than from the
+        // cursor, because a feed head commits to entries 1..head_seq and those
+        // are usually behind the cursor. Fetching only the tail would leave
+        // nothing to recompute the root over.
+        //
+        // The cost is one full walk per poll instead of an incremental one. For
+        // a template registry that is a few hundred small entries at worst, and
+        // paying it buys the ability to detect that the registry has quietly
+        // changed something it already served. An incremental walk would have
+        // to trust its own cached history, which is the assumption under attack.
+        let all_entries = self.collect_feed().await?;
+
+        // ---- 2. the head gates everything ----------------------------------
+        let head_status = self.check_head(&all_entries).await?;
+
         let mut report = SyncReport {
             cursor: self.state.cursor,
+            head: Some(head_status.clone()),
             ..Default::default()
         };
 
@@ -224,17 +315,8 @@ impl Subscriber {
         let mut vendors: std::collections::BTreeMap<String, TrustedVendor> =
             std::collections::BTreeMap::new();
 
-        loop {
-            let path = format!(
-                "/publishers/{}/feed?since={}",
-                self.state.publisher_did, report.cursor
-            );
-            let page: FeedPage = self.client.get_json(&path).await?;
-            if page.entries.is_empty() {
-                break;
-            }
-
-            for entry in &page.entries {
+        {
+            for entry in all_entries.iter().filter(|e| e.seq > self.state.cursor) {
                 report.examined += 1;
 
                 // Vendor claims carry no template to import, but they do
@@ -276,7 +358,11 @@ impl Subscriber {
                     }
                 };
 
-                match self.import_one(entry, &vendor, mode).await? {
+                match self
+                    .import_one(entry, &vendor, mode)
+                    .await
+                    .map_err(SyncError::Registry)?
+                {
                     Outcome::Imported(t) => {
                         if t.newly_pinned {
                             self.policy.approve(&t.qualified_name, &t.template_hash)?;
@@ -302,22 +388,89 @@ impl Subscriber {
                     }
                 }
             }
+        }
 
+        // Only now is it safe to remember progress: the head verified, so the
+        // entries just processed are the ones the publisher signed for.
+        self.state.cursor = report.cursor;
+        if let Some(head) = head_status.verified() {
+            self.state.head_seq = Some(head.head_seq);
+            self.state.head_root = Some(head.merkle_root.clone());
+        }
+        self.state.last_polled_at = now_secs();
+        self.state.save(&self.state_path)?;
+        Ok(report)
+    }
+
+    /// Walk the publisher's whole feed from the beginning, in order.
+    async fn collect_feed(&self) -> std::result::Result<Vec<crate::model::FeedEntry>, SyncError> {
+        let mut all: Vec<crate::model::FeedEntry> = Vec::new();
+        let mut since = 0u64;
+        loop {
+            let path = format!(
+                "/publishers/{}/feed?since={since}",
+                self.state.publisher_did
+            );
+            let page: FeedPage = self.client.get_json(&path).await?;
+            if page.entries.is_empty() {
+                break;
+            }
+            let highest = page.entries.iter().map(|e| e.seq).max().unwrap_or(since);
+            all.extend(page.entries);
             if !page.has_more {
                 break;
             }
             // Guard against a registry that reports has_more but returns
             // nothing new: without this, a buggy or hostile server could spin
             // this loop forever.
-            if page.next <= report.cursor {
+            if highest <= since {
                 break;
             }
+            since = highest;
         }
 
-        self.state.cursor = report.cursor;
-        self.state.last_polled_at = now_secs();
-        self.state.save(&self.state_path)?;
-        Ok(report)
+        // The registry controls this ordering, so it is normalised here rather
+        // than trusted. Sorting means a reordered page cannot change which
+        // ordinal an entry gets, which in turn means a root mismatch reports
+        // the real problem (a substituted or missing entry) instead of noise.
+        all.sort_by_key(|e| e.seq);
+        all.dedup_by_key(|e| e.seq);
+        Ok(all)
+    }
+
+    /// Fetch and check the publisher's signed feed head. Fails closed.
+    async fn check_head(
+        &self,
+        all_entries: &[crate::model::FeedEntry],
+    ) -> std::result::Result<HeadStatus, SyncError> {
+        let path = format!("/publishers/{}/head", self.state.publisher_did);
+        let response = self.client.get(&path).await?;
+
+        if response.status == 404 {
+            // Never seen one: the publisher has not adopted feed heads yet.
+            // Seen one before: it did not stop existing on its own.
+            return match self.state.head_seq {
+                None => Ok(HeadStatus::Bootstrapping),
+                Some(previous) => Err(HeadRejection::Disappeared { previous }.into()),
+            };
+        }
+        let body = response.ok_body(&path)?;
+
+        let head =
+            feedhead::verify_head(&self.aquafier, &body, Some(&self.state.publisher_did)).await?;
+
+        // Rollback and equivocation, against what this subscriber already saw.
+        feedhead::check_against_previous(
+            &head,
+            self.state.head_seq,
+            self.state.head_root.as_deref(),
+        )?;
+
+        // Withholding and reordering, against what the registry just served.
+        let tips: Vec<String> = all_entries.iter().map(|e| e.tree_tip.clone()).collect();
+        feedhead::check_against_entries(&head, &tips)?;
+
+        Ok(HeadStatus::Verified(head))
     }
 
     async fn import_one(

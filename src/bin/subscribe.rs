@@ -196,6 +196,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         match subscriber.sync(mode).await {
             Ok(report) => {
+                match report.head.as_ref() {
+                    Some(aqua_template_registry::subscribe::HeadStatus::Verified(h)) => {
+                        println!(
+                            "feed head verified: covers {} entries, root {}",
+                            h.head_seq, h.merkle_root
+                        );
+                    }
+                    Some(aqua_template_registry::subscribe::HeadStatus::Bootstrapping) => {
+                        println!(
+                            "no feed head from this publisher yet: withholding and reordering \
+                             cannot be detected until they sign one"
+                        );
+                    }
+                    None => {}
+                }
                 if !report.is_empty() || report.already_present > 0 {
                     println!(
                         "examined {}, imported {}, already present {}, rejected {}, cursor {}",
@@ -235,7 +250,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             Err(e) => {
-                eprintln!("sync failed: {e}");
+                // A head failure means the registry's whole view is suspect,
+                // so nothing was imported and the cursor did not move. Say so
+                // loudly rather than letting it look like a transient blip.
+                eprintln!("sync failed [{}]: {e}", e.code());
+                if matches!(e, aqua_template_registry::subscribe::SyncError::Head(_)) {
+                    eprintln!(
+                        "  The publisher's signed feed head does not match what this registry \
+                         served."
+                    );
+                    eprintln!(
+                        "  Nothing was imported and the cursor did not advance. Try another \
+                         registry or mirror for the same publisher DID."
+                    );
+                }
                 if args.once {
                     return Err(e.into());
                 }
