@@ -36,7 +36,9 @@ server = ["dep:axum", "dep:tokio", "dep:tower"]
 client = ["dep:hyper", "dep:hyper-util", "dep:http-body-util", "dep:bytes", "dep:tokio"]
 
 [dependencies]
-aqua-rs-sdk-core = { path = "../aqua-rs-sdk-core", features = ["native"] }
+# Dual path+version: local development resolves the sibling checkout, the
+# published crate depends on the crates.io release.
+aqua-rs-sdk-core = { path = "../aqua-rs-sdk-core", version = "0.1.0", features = ["native"] }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
