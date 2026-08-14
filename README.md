@@ -15,6 +15,13 @@ A deployed registry can be found (without SLA) under https://aqua-registry.inblo
 
 Core also does not ship the three registration templates (`vendor-registration`, `template-registration`, `alias-registration`) as built-ins, unlike the full `aqua-rs-sdk`. That is why this project vendors byte-identical copies of them; see "Vendored registration templates" below.
 
+Releases are timed events. `Cargo.toml` = git tag `vX.Y.Z` = crates.io.
+Core is published first; this crate's `aqua-rs-sdk-core` pin must name a
+version already on crates.io. Use [`scripts/release.sh`](scripts/release.sh);
+see [RELEASE.md](RELEASE.md). This crate may later accept WASM-carrying
+templates — that is a registry-series decision, not a reason to put a
+WASM runtime in core.
+
 ## How registration works
 
 Registration is not an API write. A publisher builds a signed Aqua tree, elsewhere, using their own key, and POSTs the whole tree. The registry runs it through a fixed acceptance pipeline (`src/verify.rs`):
