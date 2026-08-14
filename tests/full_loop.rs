@@ -17,8 +17,9 @@ mod common;
 use std::path::PathBuf;
 
 use aqua_rs_sdk_core::primitives::{Method, RevisionLink};
+use aqua_rs_sdk_core::schema::tree::Tree;
 use aqua_rs_sdk_core::schema::AquaTreeWrapper;
-use aqua_rs_sdk_core::Aquafier;
+use aqua_rs_sdk_core::{Aquafier, CreateObjectError};
 
 use aqua_template_registry::httpclient::RegistryClient;
 use aqua_template_registry::import::{ImportRejection, ImportStore};
@@ -37,6 +38,25 @@ fn link_of(bare: &str) -> RevisionLink {
     RevisionLink::from_bytes(arr)
 }
 
+/// Merge one-revision imported template trees into a single source tree.
+///
+/// `verify_aqua_tree_with_linked_trees` only verifies linked trees reachable
+/// from the object's genesis-anchor structural links. A derived type's
+/// ancestor is not one of those links, so sibling source trees get dropped.
+/// Putting type + ancestry in one revisions map keeps the ancestor findable.
+fn bundle_template_trees(trees: &[Tree]) -> Tree {
+    let mut revisions = std::collections::BTreeMap::new();
+    let mut file_index = std::collections::BTreeMap::new();
+    for tree in trees {
+        revisions.extend(tree.revisions.clone());
+        file_index.extend(tree.file_index.clone());
+    }
+    Tree {
+        revisions,
+        file_index,
+    }
+}
+
 fn definition(name: &str) -> String {
     std::fs::read_to_string(
         common::seed_dir()
@@ -46,14 +66,24 @@ fn definition(name: &str) -> String {
     .unwrap_or_else(|e| panic!("read definition {name}: {e}"))
 }
 
+/// Published hashes from `seed/audit-set-v1` / the core ledger. After B11 these
+/// are not catalog-resolvable in aqua-rs-sdk-core; a consumer must import the
+/// set and pass the trees as sources.
+const AUDIT_ARTIFACT: &str = "0x431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3";
+const AUDIT_USER_TURN_MARKER: &str =
+    "0x9bf38992cb2cc1230edb6539a98e6d3c889c69aa09b1764a4b91b30cb6a36990";
+const AUDIT_AGENT_TOOL_CALL: &str =
+    "0x13d08a7ea2a0dc5f4d5a380d9dd9456ec10392bc752f152517dd227bb272592f";
+const AUDIT_API_RESPONSE: &str =
+    "0x6d1e300bbb0145cedc1a2ff19fd1ad0e0dcfcfde6a4a9b0d6ea67c7d31c4a129";
+
 /// A template definition that `aqua-rs-sdk-core` has never seen.
 ///
-/// The audit definitions in the seed set are all core built-ins, so core
-/// resolves them with no linked tree at all. That makes them useless for
-/// proving the portable-template pattern: a test using one would pass whether
-/// or not the import worked. These are synthesised instead, with a distinct
-/// nonce per call so each is a distinct type, and no `derives_from`, so nothing
-/// about them exists in any SDK.
+/// Used by the portable-template loop below so the imported type is one this
+/// process could not have resolved any other way. The audit family used to be
+/// the wrong fixture for that proof (core catalog-resolved those hashes with
+/// no linked tree). After B11 it is the non-vacuous case; see
+/// `imported_audit_set_v1_creates_t1_via_create_object_validated`.
 fn novel_definition(nonce_byte: u8, max_note_len: u32) -> String {
     let nonce = format!("0x{}", hex::encode([nonce_byte; 16]));
     serde_json::to_string_pretty(&serde_json::json!({
@@ -159,10 +189,10 @@ async fn publish_subscribe_import_use_then_pick_up_the_delta() {
         .expect("post vendor");
     assert_eq!(response.status, 201, "{}", response.body);
 
-    // Two templates that exist nowhere but this test. Using an audit
-    // definition here would prove nothing: core ships those as built-ins and
-    // resolves them with no linked tree, so the import could be a no-op and
-    // every assertion below would still pass.
+    // Two templates that exist nowhere but this test. A novel type still
+    // proves the portable-template loop for something that was never a
+    // built-in. The audit family is the B11 case and lives in
+    // `imported_audit_set_v1_creates_t1_via_create_object_validated`.
     let artifact_body = novel_definition(0xa1, 256);
     let prompt_body = novel_definition(0xb2, 512);
 
@@ -560,4 +590,251 @@ async fn the_shipped_trust_config_admits_the_shipped_audit_set() {
     }
 
     daemon.stop();
+}
+
+// ---------------------------------------------------------------------------
+
+/// H8 / B11: the audit family is no longer catalog-resolvable in
+/// aqua-rs-sdk-core. A consumer must retrieve `seed/audit-set-v1` through the
+/// real import path and pass the definition trees as sources. Creating T1
+/// (and T4/T5) via `create_object_validated` then verifies green; empty
+/// sources fail closed. The no-sources verify control is the non-vacuity
+/// proof: before B11 it would have been green for the wrong reason.
+#[tokio::test]
+async fn imported_audit_set_v1_creates_t1_via_create_object_validated() {
+    let server_dir = TempDir::new("b11-server");
+    let mut daemon = RegistryDaemon::start(&server_dir.join("data"));
+    let client = RegistryClient::new(daemon.base_url()).expect("client");
+    let did = common::publish_seed_over_http(&client).await;
+
+    let consumer_dir = TempDir::new("b11-consumer");
+    let policy = ImportPolicy::load(common::shipped_trust_config()).expect("shipped trust config");
+    let mut subscriber = Subscriber::new(
+        daemon.base_url(),
+        &did,
+        ImportStore::open(consumer_dir.join("imported")).expect("import store"),
+        policy,
+        None,
+        consumer_dir.join("cursor.json"),
+    )
+    .expect("subscriber");
+
+    let report = subscriber
+        .sync(PinMode::PinnedOnly)
+        .await
+        .expect("import the seed set");
+    assert!(
+        report.rejected.is_empty(),
+        "shipped pins must admit the shipped set: {:?}",
+        report.rejected
+    );
+    assert_eq!(
+        report.imported.len(),
+        11,
+        "all eleven audit templates import"
+    );
+
+    let store = subscriber.store();
+    for hash in [
+        AUDIT_ARTIFACT,
+        AUDIT_USER_TURN_MARKER,
+        AUDIT_AGENT_TOOL_CALL,
+        AUDIT_API_RESPONSE,
+    ] {
+        assert!(
+            store.contains(hash),
+            "imported store must contain published hash {hash}"
+        );
+    }
+
+    // T1 derives from audit_artifact; both trees must be sources. T4/T5 share
+    // the same ancestor, so the same pair-plus-children set covers them.
+    let artifact = store
+        .template_tree(AUDIT_ARTIFACT)
+        .expect("imported audit_artifact tree");
+    let t1_src = store
+        .template_tree(AUDIT_USER_TURN_MARKER)
+        .expect("imported T1 tree");
+    let t4_src = store
+        .template_tree(AUDIT_AGENT_TOOL_CALL)
+        .expect("imported T4 tree");
+    let t5_src = store
+        .template_tree(AUDIT_API_RESPONSE)
+        .expect("imported T5 tree");
+    let sources = [artifact, t1_src, t4_src, t5_src];
+
+    let aquafier = Aquafier::new();
+    let key = PublisherKey::from_seed([41u8; 32]).expect("key");
+    let signer = key.did();
+
+    let t1_payload = serde_json::json!({
+        "signer_did": signer,
+        "session_id": "session-b11-0001",
+        "turn_index": 0,
+        "opens_at": 1_754_500_000i64,
+    });
+    let t1_tree = aquafier
+        .create_object_validated(
+            link_of(AUDIT_USER_TURN_MARKER),
+            None,
+            t1_payload,
+            Some(Method::Scalar),
+            &sources,
+        )
+        .expect("create T1 from imported sources");
+
+    // Verification only walks linked trees reachable via structural links.
+    // The genesis anchor points at T1, not at T1's ancestor, so sibling
+    // one-revision trees would drop `audit_artifact`. Bundle the imported
+    // sources into one tree so the ancestor is in the same revisions map.
+    let bundled = bundle_template_trees(&sources);
+    let linked = vec![AquaTreeWrapper::new(bundled, None, None)];
+    let result = aquafier
+        .verify_aqua_tree_with_linked_trees(
+            AquaTreeWrapper::new(t1_tree, None, None),
+            linked,
+            vec![],
+        )
+        .await
+        .expect("verification ran");
+    assert!(
+        result.is_verified(),
+        "T1 created from imported sources must verify: {:?}",
+        result.outcome
+    );
+
+    // Control: create_object_validated with empty sources fails closed.
+    let err = aquafier
+        .create_object_validated(
+            link_of(AUDIT_USER_TURN_MARKER),
+            None,
+            serde_json::json!({
+                "signer_did": signer,
+                "session_id": "session-b11-0001",
+                "turn_index": 0,
+                "opens_at": 1_754_500_000i64,
+            }),
+            Some(Method::Scalar),
+            &[],
+        )
+        .expect_err("empty sources must not create a T1");
+    assert!(
+        matches!(err, CreateObjectError::TemplateNotFound(_)),
+        "expected TemplateNotFound, got {err:?}"
+    );
+
+    // Control: a tree created without sources fails closed under strict
+    // policy. Default `create_object` hangs the template hash off the
+    // genesis anchor, so a no-linked-tree verify dies at structural
+    // resolution first. Empty genesis links let the schema stage run and
+    // fire `template_not_found`. Before B11 this would have been green:
+    // core catalog-resolved the audit hash with no sources at all.
+    let unvalidated = aquafier
+        .create_object_with_anchor_links(
+            link_of(AUDIT_USER_TURN_MARKER),
+            vec![],
+            serde_json::json!({
+                "signer_did": signer,
+                "session_id": "session-b11-0001",
+                "turn_index": 0,
+                "opens_at": 1_754_500_000i64,
+            }),
+            Some(Method::Scalar),
+        )
+        .expect("create_object still constructs without resolving the type");
+    let without = aquafier
+        .verify_aqua_tree(AquaTreeWrapper::new(unvalidated, None, None), vec![])
+        .await
+        .expect("verification ran");
+    assert!(
+        !without.is_verified(),
+        "without sources, T1 must fail closed: {:?}",
+        without.outcome
+    );
+    assert!(
+        without
+            .errors()
+            .iter()
+            .any(|e| e.code == "TEMPLATE_NOT_FOUND"),
+        "strict policy must report TEMPLATE_NOT_FOUND, got {:?}",
+        without.errors()
+    );
+
+    // T4 / T5: same sources pattern, valid payloads.
+    let turn_id = "0x1620aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let t4_tree = aquafier
+        .create_object_validated(
+            link_of(AUDIT_AGENT_TOOL_CALL),
+            None,
+            serde_json::json!({
+                "signer_did": signer,
+                "turn_id": turn_id,
+                "seq_in_turn": 1,
+                "tool_name": "inventory.item.create",
+                "tool_args": { "sku": "X" },
+                "risk_level": "low",
+                "created_at": 1_754_500_000i64,
+            }),
+            Some(Method::Scalar),
+            &sources,
+        )
+        .expect("create T4 from imported sources");
+    let t4_ok = aquafier
+        .verify_aqua_tree_with_linked_trees(
+            AquaTreeWrapper::new(t4_tree, None, None),
+            vec![AquaTreeWrapper::new(
+                bundle_template_trees(&sources),
+                None,
+                None,
+            )],
+            vec![],
+        )
+        .await
+        .expect("verification ran");
+    assert!(
+        t4_ok.is_verified(),
+        "T4 created from imported sources must verify: {:?}",
+        t4_ok.outcome
+    );
+
+    let t5_tree = aquafier
+        .create_object_validated(
+            link_of(AUDIT_API_RESPONSE),
+            None,
+            serde_json::json!({
+                "signer_did": signer,
+                "turn_id": turn_id,
+                "seq_in_turn": 2,
+                "method": "GET",
+                "endpoint": "/v1/items",
+                "status_code": 200,
+                "request_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "response_body": { "ok": true },
+                "attested_origin": "api.example.com",
+                "created_at": 1_754_500_000i64,
+            }),
+            Some(Method::Scalar),
+            &sources,
+        )
+        .expect("create T5 from imported sources");
+    let t5_ok = aquafier
+        .verify_aqua_tree_with_linked_trees(
+            AquaTreeWrapper::new(t5_tree, None, None),
+            vec![AquaTreeWrapper::new(
+                bundle_template_trees(&sources),
+                None,
+                None,
+            )],
+            vec![],
+        )
+        .await
+        .expect("verification ran");
+    assert!(
+        t5_ok.is_verified(),
+        "T5 created from imported sources must verify: {:?}",
+        t5_ok.outcome
+    );
+
+    let status = daemon.stop();
+    assert!(status.success(), "registryd exited with {status}");
 }

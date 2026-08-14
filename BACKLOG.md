@@ -44,6 +44,10 @@ the section clears).
       of an imported type, verify it green with aqua-rs-sdk-core, and then
       publish one more template and assert the subscriber picks up exactly
       the delta.
+      B11 proven from this side (2026-08-14, `imported_audit_set_v1_creates_t1_via_create_object_validated`):
+      importing `seed/audit-set-v1` and creating T1 (and T4/T5) via
+      `create_object_validated` with the imported trees as sources verifies
+      green; empty sources fail closed (`TemplateNotFound`).
 - [x] R4. (2026-08-07, `POST /definitions`, `GET /definitions/{hash}`,
       `GET /definitions`) Template-body serving over HTTP: the definition JSONs currently
       ship inside the repo's `seed/audit-set-v1/definitions/`. Add

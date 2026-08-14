@@ -850,8 +850,14 @@ async fn imported_template_works_as_a_linked_tree() {
         "created_at": 1_747_526_400i64,
     });
 
+    // Fail-closed creation: after B11 the audit hashes are not catalog
+    // members, so `create_object` would skip schema validation. The imported
+    // tree is the source that makes the type resolvable.
+    let source = store
+        .template_tree(&hash)
+        .expect("the imported template as a source tree");
     let unsigned = aquafier
-        .create_object(link, None, payload, Some(Method::Scalar))
+        .create_object_validated(link, None, payload, Some(Method::Scalar), &[source])
         .expect("create an object of the imported template's type");
     let signed = aquafier
         .sign_aqua_tree(

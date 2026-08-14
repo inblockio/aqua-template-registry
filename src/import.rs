@@ -628,9 +628,11 @@ impl ImportStore {
     /// `verify_aqua_tree_with_linked_trees` as a linked tree.
     ///
     /// This is the portable-template pattern, and the reason importing is worth
-    /// anything: an application creates objects with `create_object(hash, ...)`
-    /// and ships this tree alongside so any verifier can resolve the type
-    /// without the template being built into their SDK.
+    /// anything: an application creates objects with
+    /// `create_object_validated(hash, …, template_sources)` (the fail-closed
+    /// path; `create_object` still constructs an unvalidated revision for an
+    /// unknown type) and ships this tree alongside so any verifier can resolve
+    /// the type without the template being built into their SDK.
     ///
     /// Goes through [`ImportStore::definition`], so the verify-on-read guard
     /// applies here too.
