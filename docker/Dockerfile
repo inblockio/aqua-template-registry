@@ -21,7 +21,7 @@
 # mount point, nothing else. No shell, no libc, no package manager. Health
 # checks live in the orchestrator (GET /health), not in the image.
 
-FROM docker.io/library/rust:1.95-alpine AS build
+FROM docker.io/library/rust:1.98-alpine AS build
 
 # build-base: cc + binutils for the C parts of the hash stack (blake3) and
 # for `strip`. `file` backs the static-link assertion below.
